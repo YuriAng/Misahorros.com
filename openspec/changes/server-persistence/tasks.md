@@ -55,8 +55,8 @@ Chain strategy: pending
 
 ## Phase 4: Legacy Import
 
-- [ ] 4.1 Create `server/routes/import.js`: `GET /api/import/legacy/status` from `settings.legacy_import_at`.
-- [ ] 4.2 Implement `POST /api/import/legacy`: shape validation (`400`, zero writes on malformed), single DB transaction, `ON CONFLICT DO NOTHING` per table, recompute `month_key` per transaction date, upsert `legacy_import_at`, return summary counts.
+- [x] 4.1 Create `server/routes/import.js`: `GET /api/import/legacy/status` from `settings.legacy_import_at`.
+- [x] 4.2 Implement `POST /api/import/legacy`: shape validation (`400`, zero writes on malformed), single DB transaction, `ON CONFLICT DO NOTHING` per table, recompute `month_key` per transaction date, upsert `legacy_import_at`, return summary counts.
 
 ## Phase 5: Frontend Migration
 

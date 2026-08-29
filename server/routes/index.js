@@ -9,6 +9,7 @@ import settingsRouter from './settings.js';
 import categoriesRouter from './categories.js';
 import monthsRouter from './months.js';
 import transactionsRouter from './transactions.js';
+import importRouter from './import.js';
 
 const router = Router();
 
@@ -56,5 +57,6 @@ router.use('/settings', settingsRouter);
 router.use('/categories', categoriesRouter);
 router.use('/months', monthsRouter);
 router.use('/transactions', transactionsRouter);
+router.use('/import', importRouter);
 
 export default router;
