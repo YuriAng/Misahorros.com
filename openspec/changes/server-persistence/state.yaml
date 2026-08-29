@@ -42,10 +42,25 @@ phases:
       chain_strategy: feature-branch-chain
       work_units: 7
   apply:
-    status: awaiting_user_go_ahead
-    note: pace=auto_until_apply_pause — orchestrator must not launch sdd-apply until the user explicitly confirms. Requires git init first (no repo exists yet) since feature-branch-chain needs branches/PRs.
+    status: done
+    engram_topic: sdd/server-persistence/apply-progress
+    work_units:
+      1: { branch: feat/server-persistence-01-test-runner, phase: "Test Runner Foundation", validated: PASS }
+      2: { branch: feat/server-persistence-02-db-layer, phase: "Database Layer", validated: PASS }
+      3: { branch: feat/server-persistence-03-express-api, phase: "Express API", validated: PASS }
+      4: { branch: feat/server-persistence-04-legacy-import, phase: "Legacy Import", validated: PASS }
+      5: { branch: feat/server-persistence-05-frontend-migration, phase: "Frontend Migration", validated: PASS }
+      6: { branch: feat/server-persistence-06-docker, phase: "Docker Deployment", validated: PASS }
+      7: { branch: feat/server-persistence-07-contract-tests, phase: "Contract & Integration Tests", validated: PASS }
+    phase_8_manual_verification: done (orchestrator ran directly — docker compose up healthy, data survives postgres restart and full down/up without -v)
+    tracker_branch: feat/server-persistence
+    note: every work unit was independently re-verified by a fresh-context validator agent (re-ran real commands against real Docker/Postgres, not just reading the sub-agent's self-report) — all 7 PASSED. No GitHub remote configured yet, so branches exist locally only.
   verify:
-    status: pending
+    status: done_with_warnings
+    engram_topic: sdd/server-persistence/verify-report
+    openspec_path: openspec/changes/server-persistence/verify-report.md
+    warnings: 1 (no automated regression test for FK-protected category delete, non-blocking)
+    suggestions: 2 (no direct monthKeyFromDate unit test; style.css banner CSS not itemized in design.md's file table)
   archive:
     status: pending
 
