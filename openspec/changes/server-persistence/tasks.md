@@ -86,5 +86,5 @@ Chain strategy: pending
 
 ## Phase 8: Manual Verification
 
-- [ ] 8.1 `docker compose up` on a clean host; verify `app` + `postgres` start and pass healthchecks.
-- [ ] 8.2 Restart `postgres` container and `docker compose down`/`up` (no `-v`); verify data intact both times.
+- [x] 8.1 `docker compose up` on a clean host; verify `app` + `postgres` start and pass healthchecks.
+- [x] 8.2 Restart `postgres` container and `docker compose down`/`up` (no `-v`); verify data intact both times.
