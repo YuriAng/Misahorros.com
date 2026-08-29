@@ -77,12 +77,12 @@ Chain strategy: pending
 
 ## Phase 7: Contract & Integration Tests
 
-- [ ] 7.1 Contract tests per REST endpoint: shapes, `400`/`404` cases, against Express + migrated ephemeral Postgres.
-- [ ] 7.2 Bug Fix A regression test: `months` row count unchanged across repeated `GET`s on an untouched month.
-- [ ] 7.3 Bug Fix B regression test: `POST`/`PUT` transaction with a different `date` moves it between months.
-- [ ] 7.4 Import idempotency test: double import unchanged counts; partial-failure retry fills gap; malformed payload `400`.
-- [ ] 7.5 Invariant test: `information_schema.columns` has no `spent`/`remaining` column.
-- [ ] 7.6 Parity test: server `categoryTotals` equals client pure functions over a shared fixture.
+- [x] 7.1 Contract tests per REST endpoint: shapes, `400`/`404` cases, against Express + migrated ephemeral Postgres.
+- [x] 7.2 Bug Fix A regression test: `months` row count unchanged across repeated `GET`s on an untouched month.
+- [x] 7.3 Bug Fix B regression test: `POST`/`PUT` transaction with a different `date` moves it between months.
+- [x] 7.4 Import idempotency test: double import unchanged counts; partial-failure retry fills gap; malformed payload `400`.
+- [x] 7.5 Invariant test: `information_schema.columns` has no `spent`/`remaining` column.
+- [x] 7.6 Parity test: server `categoryTotals` equals client pure functions over a shared fixture.
 
 ## Phase 8: Manual Verification
 
