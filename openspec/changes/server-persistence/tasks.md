@@ -44,14 +44,14 @@ Chain strategy: pending
 
 ## Phase 3: Express API
 
-- [ ] 3.1 Create `server/index.js`: Express app, JSON parsing, `express.static('dist')`, `/api` router, error middleware `{error:{code,message,field?}}`.
-- [ ] 3.2 Create `server/services/months.js`: `monthKeyFromDate(date, APP_TZ)`, `materializeMonth(trx, monthKey)`, `getMonthPayload(monthKey)` aggregate query.
-- [ ] 3.3 Create `server/routes/settings.js`: `GET/PUT /api/settings`; PUT never materializes a month.
-- [ ] 3.4 Create `server/routes/categories.js`: `GET/POST /api/categories`, `PATCH /api/categories/{id}`.
-- [ ] 3.5 Create `server/routes/months.js`: `GET /api/months/{k}` (Bug Fix A — no writes), `PUT income`, `PUT budgets/{catId}`, `POST carry-forward` (409 if materialized).
-- [ ] 3.6 Create `server/routes/transactions.js`: `POST/PUT/DELETE /api/transactions`; `month_key` always derived from `date` (Bug Fix B).
-- [ ] 3.7 Add `GET /api/bootstrap?month=` aggregating settings + categories + month payload; add `GET /api/health`.
-- [ ] 3.8 Add validation across routes: `400` on missing `amount`/unknown `categoryId`, `404` on unknown transaction.
+- [x] 3.1 Create `server/index.js`: Express app, JSON parsing, `express.static('dist')`, `/api` router, error middleware `{error:{code,message,field?}}`.
+- [x] 3.2 Create `server/services/months.js`: `monthKeyFromDate(date, APP_TZ)`, `materializeMonth(trx, monthKey)`, `getMonthPayload(monthKey)` aggregate query.
+- [x] 3.3 Create `server/routes/settings.js`: `GET/PUT /api/settings`; PUT never materializes a month.
+- [x] 3.4 Create `server/routes/categories.js`: `GET/POST /api/categories`, `PATCH /api/categories/{id}`.
+- [x] 3.5 Create `server/routes/months.js`: `GET /api/months/{k}` (Bug Fix A — no writes), `PUT income`, `PUT budgets/{catId}`, `POST carry-forward` (409 if materialized).
+- [x] 3.6 Create `server/routes/transactions.js`: `POST/PUT/DELETE /api/transactions`; `month_key` always derived from `date` (Bug Fix B).
+- [x] 3.7 Add `GET /api/bootstrap?month=` aggregating settings + categories + month payload; add `GET /api/health`.
+- [x] 3.8 Add validation across routes: `400` on missing `amount`/unknown `categoryId`, `404` on unknown transaction.
 
 ## Phase 4: Legacy Import
 
