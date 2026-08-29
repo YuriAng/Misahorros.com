@@ -1,0 +1,52 @@
+change: server-persistence
+schema: spec-driven
+
+session_preflight:
+  execution_mode: auto_until_apply_pause
+  artifact_store: hybrid
+  delivery_strategy: auto-chain
+  review_budget_lines: 800
+
+product_decisions:
+  scope: self-hosted, single implicit user (no login), server + DB (not client-only)
+  deployment: Docker (docker-compose: app + postgres)
+  db_engine: postgresql
+  auth: none
+  backend: node+express
+  data_migration: import_existing_localstorage_once
+  behavior_fixes: fix_ensure_month_side_effect_and_month_date_mismatch
+
+phases:
+  explore:
+    status: done
+    engram_topic: sdd/server-persistence/explore
+    openspec_path: openspec/changes/server-persistence/exploration.md
+  propose:
+    status: pending
+  spec:
+    status: done
+    engram_topic: sdd/server-persistence/spec
+    openspec_path: openspec/changes/server-persistence/specs/{budget-api,budget-persistence,legacy-data-import,self-hosted-deployment}/spec.md
+  design:
+    status: done
+    engram_topic: sdd/server-persistence/design
+    openspec_path: openspec/changes/server-persistence/design.md
+    note: sub-agent run was interrupted mid-report by a host sleep (server_error) after writing design.md to disk; orchestrator verified content against proposal/specs/actual source (no hallucination found) and completed the Engram save directly instead of a full re-run
+  tasks:
+    status: done
+    engram_topic: sdd/server-persistence/tasks
+    openspec_path: openspec/changes/server-persistence/tasks.md
+    review_workload_forecast:
+      estimated_changed_lines: 1800-1900
+      chained_prs_recommended: true
+      chain_strategy: feature-branch-chain
+      work_units: 7
+  apply:
+    status: awaiting_user_go_ahead
+    note: pace=auto_until_apply_pause — orchestrator must not launch sdd-apply until the user explicitly confirms. Requires git init first (no repo exists yet) since feature-branch-chain needs branches/PRs.
+  verify:
+    status: pending
+  archive:
+    status: pending
+
+next_recommended: sdd-apply (pending user go-ahead)

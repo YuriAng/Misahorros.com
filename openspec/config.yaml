@@ -1,0 +1,41 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Vanilla JS (ES modules), Vite 5.4 (dev/build/preview), no framework.
+  Architecture: src/main.js (entry/wiring), render.js (DOM rendering), state.js
+  (in-memory state + mutations), storage.js (localStorage persistence layer),
+  utils.js (helpers). No backend; storage.js is the sole persistence boundary.
+  Testing: no test runner configured yet (strict_tdd disabled until one exists).
+  Style: no linter/formatter/type-checker configured. Not a git repo yet.
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Flag any change touching storage.js as a persistence-boundary change
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+    - For the upcoming database-persistence change, document the migration
+      path away from localStorage (storage.js) explicitly, including data
+      shape compatibility with the existing defaultData() schema
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Include a task to introduce a test runner before/alongside persistence
+      changes, since none exists today
+  apply:
+    guidelines:
+      - Follow existing code patterns (plain ES modules, no framework)
+      - Keep storage.js (or its successor) as the single persistence boundary
+    tdd: false           # No test runner exists yet; enable once one is added
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: "npm run build"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
+    - Warn before merging changes that alter the localStorage data schema
