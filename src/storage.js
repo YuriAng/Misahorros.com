@@ -1,9 +1,14 @@
-// Capa de persistencia: única responsable de leer/escribir localStorage.
-// Si en el futuro migras a IndexedDB o a un backend, solo este archivo cambia.
+// Frontera de datos heredados: este módulo era el único responsable de
+// leer/escribir localStorage. Desde server-persistence, el servidor
+// (Express + Postgres) es la fuente de verdad y este módulo queda
+// SOLO DE LECTURA — existe únicamente para que el banner de importación
+// de main.js pueda leer los datos previos a la migración una sola vez.
+// `defaultData()` también sirve como fábrica de forma para el cache de
+// src/state.js (design.md "Frontend Migration Path").
 
-const STORAGE_KEY = 'budgetpwa_data_v1';
+export const STORAGE_KEY = 'budgetpwa_data_v1';
 
-function defaultData() {
+export function defaultData() {
   return {
     version: 1,
     settings: {
@@ -23,16 +28,7 @@ export function loadData() {
     if (!parsed || typeof parsed !== 'object' || !parsed.version) return defaultData();
     return parsed;
   } catch (err) {
-    console.error('No se pudieron leer los datos guardados; se reinicia el almacenamiento.', err);
+    console.error('No se pudieron leer los datos guardados localmente.', err);
     return defaultData();
-  }
-}
-
-export function saveData(data) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (err) {
-    // Puede fallar si el dispositivo está sin espacio o en modo privado estricto.
-    console.error('No se pudo guardar en localStorage.', err);
   }
 }

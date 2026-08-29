@@ -60,12 +60,12 @@ Chain strategy: pending
 
 ## Phase 5: Frontend Migration
 
-- [ ] 5.1 Create `src/api.js`: fetch wrapper, `ApiError`, one method per endpoint.
-- [ ] 5.2 Modify `src/storage.js`: remove `saveData`; keep `STORAGE_KEY`, `defaultData()`, `loadData()` for legacy-read only.
-- [ ] 5.3 Modify `src/state.js`: `cache = defaultData()`, async `bootstrap()`, `readMonth()` replacing `ensureMonth()` in read paths.
-- [ ] 5.4 Modify `src/state.js`: convert mutators (`setIncome`, `setBudget`, transaction CRUD, `setActiveMonth`, categories) to async calls into `api.js`.
-- [ ] 5.5 Modify `src/main.js`: async handlers wrapped in `withBusy()`; bottom-of-file `await bootstrap(); renderApp()`.
-- [ ] 5.6 Modify `src/main.js`: import banner wired to `GET /api/import/legacy/status` + `POST /api/import/legacy`.
+- [x] 5.1 Create `src/api.js`: fetch wrapper, `ApiError`, one method per endpoint.
+- [x] 5.2 Modify `src/storage.js`: remove `saveData`; keep `STORAGE_KEY`, `defaultData()`, `loadData()` for legacy-read only.
+- [x] 5.3 Modify `src/state.js`: `cache = defaultData()`, async `bootstrap()`, `readMonth()` replacing `ensureMonth()` in read paths.
+- [x] 5.4 Modify `src/state.js`: convert mutators (`setIncome`, `setBudget`, transaction CRUD, `setActiveMonth`, categories) to async calls into `api.js`.
+- [x] 5.5 Modify `src/main.js`: async handlers wrapped in `withBusy()`; bottom-of-file `await bootstrap(); renderApp()`.
+- [x] 5.6 Modify `src/main.js`: import banner wired to `GET /api/import/legacy/status` + `POST /api/import/legacy`.
 
 ## Phase 6: Docker / Deployment
 

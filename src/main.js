@@ -1,13 +1,21 @@
 // Punto de entrada: conecta eventos del DOM con el estado (state.js)
 // y vuelve a renderizar (render.js) después de cada cambio.
+//
+// Desde server-persistence: toda escritura es async, así que cada handler
+// que escribe se envuelve con `withBusy()` — deshabilita el control mientras
+// espera la respuesta del servidor, vuelve a renderizar al terminar, y
+// muestra un mensaje visible (en vez de un `console.error` silencioso) si
+// la petición falla.
 
 import './style.css';
 import { renderApp } from './render.js';
 import {
-  getData, getActiveMonth, setActiveMonth,
+  bootstrap, getData, getActiveMonth, setActiveMonth,
   setIncome, addCategory, updateCategory, archiveCategory,
   addTransaction, deleteTransaction, getCategoryBudget
 } from './state.js';
+import { ApiError, getImportStatus, importLegacy } from './api.js';
+import { loadData, STORAGE_KEY } from './storage.js';
 import { shiftMonthKey } from './utils.js';
 
 // Cierra cualquier overlay que haya quedado abierto antes de abrir uno nuevo,
@@ -27,17 +35,69 @@ document.querySelectorAll('[data-close]').forEach(btn => {
   btn.addEventListener('click', () => { btn.closest('.overlay').hidden = true; });
 });
 
+// --- Mensajes visibles de error (reemplaza el "console.error y listo") ---
+
+function ensureErrorBanner() {
+  let el = document.getElementById('errorBanner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'errorBanner';
+    el.className = 'error-banner';
+    el.hidden = true;
+    document.getElementById('app').prepend(el);
+  }
+  return el;
+}
+
+let errorBannerTimer = null;
+
+function showError(message) {
+  const el = ensureErrorBanner();
+  el.textContent = message;
+  el.hidden = false;
+  clearTimeout(errorBannerTimer);
+  errorBannerTimer = setTimeout(() => { el.hidden = true; }, 6000);
+}
+
+// Envuelve un handler que escribe: deshabilita `control` mientras `fn`
+// (async) está en curso, vuelve a renderizar cuando termina (haya
+// funcionado o no, para reflejar cualquier estado parcial), y convierte un
+// `ApiError` en un mensaje visible en vez de perderlo en la consola.
+function withBusy(getControl, fn) {
+  return async (...args) => {
+    const control = typeof getControl === 'function' ? getControl() : getControl;
+    if (control) control.disabled = true;
+    try {
+      await fn(...args);
+      renderApp();
+    } catch (err) {
+      renderApp();
+      if (err instanceof ApiError) {
+        showError(err.message);
+      } else {
+        showError('Ocurrió un error inesperado. Intenta de nuevo.');
+      }
+    } finally {
+      if (control) control.disabled = false;
+    }
+  };
+}
+
+function submitButtonOf(formId) {
+  return () => document.getElementById(formId).querySelector('button[type="submit"]');
+}
+
 // --- Navegación entre meses ---
 
-document.getElementById('prevMonth').addEventListener('click', () => {
-  setActiveMonth(shiftMonthKey(getActiveMonth(), -1));
-  renderApp();
-});
+document.getElementById('prevMonth').addEventListener('click', withBusy(
+  () => document.getElementById('prevMonth'),
+  async () => { await setActiveMonth(shiftMonthKey(getActiveMonth(), -1)); }
+));
 
-document.getElementById('nextMonth').addEventListener('click', () => {
-  setActiveMonth(shiftMonthKey(getActiveMonth(), 1));
-  renderApp();
-});
+document.getElementById('nextMonth').addEventListener('click', withBusy(
+  () => document.getElementById('nextMonth'),
+  async () => { await setActiveMonth(shiftMonthKey(getActiveMonth(), 1)); }
+));
 
 // --- Ingreso mensual ---
 
@@ -49,12 +109,14 @@ document.getElementById('summaryCard').addEventListener('click', (e) => {
   openOverlay('incomeFormOverlay');
 });
 
-document.getElementById('incomeForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  setIncome(getActiveMonth(), document.getElementById('incomeAmount').value);
-  closeOverlay('incomeFormOverlay');
-  renderApp();
-});
+document.getElementById('incomeForm').addEventListener('submit', withBusy(
+  submitButtonOf('incomeForm'),
+  async (e) => {
+    e.preventDefault();
+    await setIncome(getActiveMonth(), document.getElementById('incomeAmount').value);
+    closeOverlay('incomeFormOverlay');
+  }
+));
 
 // --- Categorías: crear / editar / archivar ---
 
@@ -100,32 +162,38 @@ document.getElementById('categoriesList').addEventListener('click', (e) => {
   openOverlay('categoryFormOverlay');
 });
 
-document.getElementById('categoryForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const id = document.getElementById('categoryId').value;
-  const payload = {
-    name: document.getElementById('categoryName').value,
-    icon: document.getElementById('categoryIcon').value,
-    color: document.getElementById('categoryColor').value,
-    budget: document.getElementById('categoryBudget').value
-  };
-  if (id) {
-    updateCategory(id, payload);
-  } else {
-    addCategory(payload);
+document.getElementById('categoryForm').addEventListener('submit', withBusy(
+  submitButtonOf('categoryForm'),
+  async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('categoryId').value;
+    const payload = {
+      name: document.getElementById('categoryName').value,
+      icon: document.getElementById('categoryIcon').value,
+      color: document.getElementById('categoryColor').value,
+      budget: document.getElementById('categoryBudget').value
+    };
+    if (id) {
+      await updateCategory(id, payload);
+    } else {
+      await addCategory(payload);
+    }
+    closeOverlay('categoryFormOverlay');
   }
-  closeOverlay('categoryFormOverlay');
-  renderApp();
-});
+));
 
 document.getElementById('deleteCategoryBtn').addEventListener('click', () => {
   const id = document.getElementById('categoryId').value;
   if (!id) return;
   const ok = confirm('¿Eliminar esta categoría? Se archivará: dejará de aparecer para nuevos gastos, pero su histórico se conserva.');
   if (!ok) return;
-  archiveCategory(id);
-  closeOverlay('categoryFormOverlay');
-  renderApp();
+  withBusy(
+    () => document.getElementById('deleteCategoryBtn'),
+    async () => {
+      await archiveCategory(id);
+      closeOverlay('categoryFormOverlay');
+    }
+  )();
 });
 
 // --- Gastos: alta rápida y borrado ---
@@ -135,29 +203,88 @@ document.getElementById('fabAddExpense').addEventListener('click', () => {
   openOverlay('expenseFormOverlay');
 });
 
-document.getElementById('expenseForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const categoryId = document.getElementById('expenseCategory').value;
-  if (!categoryId) {
-    alert('Primero crea una categoría para poder registrar gastos.');
-    return;
+document.getElementById('expenseForm').addEventListener('submit', withBusy(
+  submitButtonOf('expenseForm'),
+  async (e) => {
+    e.preventDefault();
+    const categoryId = document.getElementById('expenseCategory').value;
+    if (!categoryId) {
+      alert('Primero crea una categoría para poder registrar gastos.');
+      return;
+    }
+    await addTransaction(getActiveMonth(), {
+      categoryId,
+      amount: document.getElementById('expenseAmount').value,
+      note: document.getElementById('expenseNote').value
+    });
+    closeOverlay('expenseFormOverlay');
   }
-  addTransaction(getActiveMonth(), {
-    categoryId,
-    amount: document.getElementById('expenseAmount').value,
-    note: document.getElementById('expenseNote').value
-  });
-  closeOverlay('expenseFormOverlay');
-  renderApp();
-});
+));
 
 document.getElementById('transactionsList').addEventListener('click', (e) => {
   const btn = e.target.closest('.delete-transaction');
   if (!btn) return;
-  if (confirm('¿Eliminar este gasto? El monto volverá al saldo disponible de su categoría.')) {
-    deleteTransaction(getActiveMonth(), btn.dataset.id);
-    renderApp();
-  }
+  if (!confirm('¿Eliminar este gasto? El monto volverá al saldo disponible de su categoría.')) return;
+  withBusy(
+    () => btn,
+    async () => { await deleteTransaction(getActiveMonth(), btn.dataset.id); }
+  )();
 });
 
-renderApp();
+// --- Importación única de datos heredados (localStorage -> servidor) ---
+//
+// El estado de "ya importado" vive en el servidor (`settings.legacy_import_at`,
+// vía GET /api/import/legacy/status), nunca en una bandera local nueva: así
+// sobrevive a un cambio de navegador y no se puede perder junto con la
+// bandera de localStorage que reemplaza (design.md "Sequence: Legacy Data
+// Import").
+function renderImportSummary(banner, summary) {
+  banner.innerHTML = `
+    <p>Importación completa: ${summary.imported.categories} categorías, ${summary.imported.months} meses,
+      ${summary.imported.budgets} presupuestos, ${summary.imported.transactions} gastos.</p>
+    <button type="button" class="btn-link" id="dismissImportBanner">Cerrar</button>
+  `;
+  document.getElementById('dismissImportBanner').addEventListener('click', () => banner.remove());
+}
+
+function showImportBanner() {
+  const banner = document.createElement('div');
+  banner.id = 'legacyImportBanner';
+  banner.className = 'import-banner';
+  banner.innerHTML = `
+    <p>Detectamos datos guardados en este navegador de una versión anterior. ¿Quieres importarlos al nuevo servidor?</p>
+    <button type="button" class="btn-primary" id="importLegacyBtn">Importar mis datos</button>
+  `;
+  document.getElementById('app').prepend(banner);
+
+  document.getElementById('importLegacyBtn').addEventListener('click', withBusy(
+    () => document.getElementById('importLegacyBtn'),
+    async () => {
+      const legacyData = loadData();
+      const summary = await importLegacy(legacyData);
+      await bootstrap();
+      renderImportSummary(banner, summary);
+    }
+  ));
+}
+
+async function checkLegacyImport() {
+  try {
+    const status = await getImportStatus();
+    if (status.imported) return;
+    if (!localStorage.getItem(STORAGE_KEY)) return;
+    showImportBanner();
+  } catch (err) {
+    // No bloquea el arranque de la app: si la verificación falla, esta
+    // sesión simplemente no ofrece el banner de importación.
+    console.error('No se pudo verificar el estado de importación de datos heredados.', err);
+  }
+}
+
+// --- Arranque ---
+
+(async () => {
+  await bootstrap();
+  renderApp();
+  await checkLegacyImport();
+})();

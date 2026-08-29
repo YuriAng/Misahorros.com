@@ -336,3 +336,20 @@ main {
 .btn-primary:active { background: var(--color-primary-dark); }
 .btn-secondary { background: var(--color-border); color: var(--color-text); }
 .btn-danger { background: none; color: var(--color-danger); margin-right: auto; }
+
+/* Banners de src/main.js: importación de datos heredados y errores de red. */
+.import-banner, .error-banner {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.import-banner { border-left: 4px solid var(--color-primary); }
+.error-banner { border-left: 4px solid var(--color-danger); color: var(--color-danger); }
