@@ -31,10 +31,10 @@ Chain strategy: pending
 
 ## Phase 1: Test Runner Foundation
 
-- [ ] 1.1 Add `vitest`, `supertest` devDependencies; add `test` script to `package.json`.
-- [ ] 1.2 Create `vitest.config.js`: node environment, `tests/` include glob.
-- [ ] 1.3 Create `tests/unit/smoke.test.js`: trivial passing test proving the runner works.
-- [ ] 1.4 Write unit tests for `getCategorySpent`, `getCategoryBudget`, `getCategoryRemaining`, `getMonthTotals` against literal cache fixtures.
+- [x] 1.1 Add `vitest`, `supertest` devDependencies; add `test` script to `package.json`.
+- [x] 1.2 Create `vitest.config.js`: node environment, `tests/` include glob.
+- [x] 1.3 Create `tests/unit/smoke.test.js`: trivial passing test proving the runner works.
+- [x] 1.4 Write unit tests for `getCategorySpent`, `getCategoryBudget`, `getCategoryRemaining`, `getMonthTotals` against literal cache fixtures.
 
 ## Phase 2: Database Layer
 
