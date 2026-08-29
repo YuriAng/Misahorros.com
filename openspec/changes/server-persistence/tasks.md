@@ -38,9 +38,9 @@ Chain strategy: pending
 
 ## Phase 2: Database Layer
 
-- [ ] 2.1 Add `knex`, `pg` dependencies; create `knexfile.js` with env-driven connection config.
-- [ ] 2.2 Create `server/db.js`: Knex instance + `pg.types.setTypeParser(1700, parseFloat)` NUMERIC fix.
-- [ ] 2.3 Create `server/migrations/001_init.js`: full DDL — `categories`, `settings`, `months`, `category_budgets`, `transactions`, indexes, checks.
+- [x] 2.1 Add `knex`, `pg` dependencies; create `knexfile.js` with env-driven connection config.
+- [x] 2.2 Create `server/db.js`: Knex instance + `pg.types.setTypeParser(1700, parseFloat)` NUMERIC fix.
+- [x] 2.3 Create `server/migrations/001_init.js`: full DDL — `categories`, `settings`, `months`, `category_budgets`, `transactions`, indexes, checks.
 
 ## Phase 3: Express API
 
