@@ -69,11 +69,11 @@ Chain strategy: pending
 
 ## Phase 6: Docker / Deployment
 
-- [ ] 6.1 Create `Dockerfile`: multi-stage — Vite build stage, runtime stage (`npm ci --omit=dev`).
-- [ ] 6.2 Create `docker-compose.yml`: `app` + `postgres`, named volume, healthchecks.
-- [ ] 6.3 Create `docker-entrypoint.sh`: `npx knex migrate:latest` then `exec node server/index.js`.
-- [ ] 6.4 Create `.env.example`: `POSTGRES_*`, `DATABASE_URL`, `APP_TZ`, `PORT`.
-- [ ] 6.5 Update `openspec/config.yaml`: `verify.test_command` → `"npm test"`.
+- [x] 6.1 Create `Dockerfile`: multi-stage — Vite build stage, runtime stage (`npm ci --omit=dev`).
+- [x] 6.2 Create `docker-compose.yml`: `app` + `postgres`, named volume, healthchecks.
+- [x] 6.3 Create `docker-entrypoint.sh`: `npx knex migrate:latest` then `exec node server/index.js`.
+- [x] 6.4 Create `.env.example`: `POSTGRES_*`, `DATABASE_URL`, `APP_TZ`, `PORT`.
+- [x] 6.5 Update `openspec/config.yaml`: `verify.test_command` → `"npm test"`.
 
 ## Phase 7: Contract & Integration Tests
 

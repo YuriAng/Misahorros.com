@@ -33,7 +33,7 @@ rules:
     tdd: false           # No test runner exists yet; enable once one is added
     test_command: ""
   verify:
-    test_command: ""
+    test_command: "npm test"
     build_command: "npm run build"
     coverage_threshold: 0
   archive:
