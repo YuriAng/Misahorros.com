@@ -34,6 +34,7 @@ export async function monthsRowCount() {
 export async function insertCategory(overrides = {}) {
   const row = {
     id: overrides.id || `cat_${Math.random().toString(16).slice(2, 10)}`,
+    profile_id: overrides.profileId || DEFAULT_PROFILE_ID,
     name: overrides.name || 'Groceries',
     icon: overrides.icon || '🛒',
     color: overrides.color || '#4F8EF7',
@@ -41,4 +42,12 @@ export async function insertCategory(overrides = {}) {
   };
   await db('categories').insert(row);
   return row;
+}
+
+// Bypasses PUT /api/profiles/active (not implemented until Phase 4) by
+// writing settings.active_profile directly — the same source of truth
+// requireActiveProfile reads from (budget-profiles spec, "Server-Resolved
+// Active Profile").
+export async function setActiveProfile(profileId) {
+  await db('settings').where({ key: 'active_profile' }).update({ value: profileId });
 }

@@ -1,6 +1,8 @@
 // GET /api/months/{k} (side-effect free — Bug Fix A), PUT income, PUT
 // budgets/{catId} (both materialize the month), POST carry-forward (409 if
-// the month is already materialized).
+// the month is already materialized). Every handler is scoped to
+// `req.profileId`, resolved upstream by `requireActiveProfile`
+// (design.md "Enforcement at the router mount point").
 import { Router } from 'express';
 import db from '../db.js';
 import { asyncHandler } from '../asyncHandler.js';
@@ -27,7 +29,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const { monthKey } = req.params;
     assertMonthKey(monthKey);
-    res.json(await getMonthPayload(monthKey));
+    res.json(await getMonthPayload(req.profileId, monthKey));
   })
 );
 
@@ -40,9 +42,9 @@ router.put(
     assertAmount(amount);
 
     const row = await db.transaction(async (trx) => {
-      await materializeMonth(trx, monthKey);
+      await materializeMonth(trx, req.profileId, monthKey);
       const [updated] = await trx('months')
-        .where({ month_key: monthKey })
+        .where({ profile_id: req.profileId, month_key: monthKey })
         .update({ income_amount: Number(amount), income_updated_at: trx.fn.now() })
         .returning('*');
       return updated;
@@ -64,13 +66,13 @@ router.put(
     assertAmount(amount);
 
     await db.transaction(async (trx) => {
-      const category = await trx('categories').where({ id: categoryId }).first();
+      const category = await trx('categories').where({ id: categoryId, profile_id: req.profileId }).first();
       if (!category) throw badRequest(`Unknown category: ${categoryId}`, 'categoryId');
 
-      await materializeMonth(trx, monthKey);
+      await materializeMonth(trx, req.profileId, monthKey);
       await trx('category_budgets')
-        .insert({ month_key: monthKey, category_id: categoryId, amount: Number(amount) })
-        .onConflict(['month_key', 'category_id'])
+        .insert({ profile_id: req.profileId, month_key: monthKey, category_id: categoryId, amount: Number(amount) })
+        .onConflict(['profile_id', 'month_key', 'category_id'])
         .merge();
     });
 
@@ -85,29 +87,38 @@ router.post(
     assertMonthKey(monthKey);
 
     const result = await db.transaction(async (trx) => {
-      const existing = await trx('months').where({ month_key: monthKey }).first();
+      const existing = await trx('months').where({ profile_id: req.profileId, month_key: monthKey }).first();
       if (existing) {
         throw conflict(`Month ${monthKey} is already materialized`);
       }
 
+      // The source month MUST come from this profile only (design.md
+      // "Carry-forward endpoint" — both this hint and services/months.js's
+      // getMonthPayload must be scoped TOGETHER, or the UI promises a
+      // carry-forward the endpoint would not actually deliver).
       const previous = await trx('months')
-        .where('month_key', '<', monthKey)
+        .where({ profile_id: req.profileId })
+        .andWhere('month_key', '<', monthKey)
         .orderBy('month_key', 'desc')
         .first();
 
-      await materializeMonth(trx, monthKey);
+      await materializeMonth(trx, req.profileId, monthKey);
 
       if (!previous) {
         return { copiedFrom: null, income: 0, budgetCount: 0 };
       }
 
       await trx('months')
-        .where({ month_key: monthKey })
+        .where({ profile_id: req.profileId, month_key: monthKey })
         .update({ income_amount: previous.income_amount, income_updated_at: trx.fn.now() });
 
-      const previousBudgets = await trx('category_budgets').where({ month_key: previous.month_key });
+      const previousBudgets = await trx('category_budgets').where({
+        profile_id: req.profileId,
+        month_key: previous.month_key,
+      });
       for (const budget of previousBudgets) {
         await trx('category_budgets').insert({
+          profile_id: req.profileId,
           month_key: monthKey,
           category_id: budget.category_id,
           amount: budget.amount,

@@ -1,6 +1,7 @@
 // GET/POST /api/categories, PATCH /api/categories/{id}. `budget`+`monthKey`
 // on create/update are applied atomically with materializing the month
-// (design.md REST API Contract).
+// (design.md REST API Contract). Every handler is scoped to
+// `req.profileId`, resolved upstream by `requireActiveProfile`.
 import { Router } from 'express';
 import db from '../db.js';
 import { asyncHandler } from '../asyncHandler.js';
@@ -21,19 +22,19 @@ function serializeCategory(row) {
   };
 }
 
-async function applyBudget(trx, { categoryId, budget, monthKey }) {
+async function applyBudget(trx, { profileId, categoryId, budget, monthKey }) {
   if (budget == null || !monthKey) return;
-  await materializeMonth(trx, monthKey);
+  await materializeMonth(trx, profileId, monthKey);
   await trx('category_budgets')
-    .insert({ month_key: monthKey, category_id: categoryId, amount: Number(budget) || 0 })
-    .onConflict(['month_key', 'category_id'])
+    .insert({ profile_id: profileId, month_key: monthKey, category_id: categoryId, amount: Number(budget) || 0 })
+    .onConflict(['profile_id', 'month_key', 'category_id'])
     .merge();
 }
 
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const rows = await db('categories').orderBy('created_at', 'asc');
+    const rows = await db('categories').where({ profile_id: req.profileId }).orderBy('created_at', 'asc');
     res.json(rows.map(serializeCategory));
   })
 );
@@ -51,6 +52,7 @@ router.post(
       const [inserted] = await trx('categories')
         .insert({
           id: categoryId,
+          profile_id: req.profileId,
           name: String(name).trim(),
           icon: icon ? String(icon).trim() : '💸',
           color: color || '#4F8EF7',
@@ -58,7 +60,7 @@ router.post(
         })
         .returning('*');
 
-      await applyBudget(trx, { categoryId, budget, monthKey });
+      await applyBudget(trx, { profileId: req.profileId, categoryId, budget, monthKey });
 
       return inserted;
     });
@@ -73,7 +75,11 @@ router.patch(
     const { id } = req.params;
     const { name, icon, color, archived, budget, monthKey } = req.body || {};
 
-    const existing = await db('categories').where({ id }).first();
+    // Scoped by profile_id so a foreign id — one that exists but belongs to
+    // another profile — returns 404 exactly like an unknown id, never
+    // exposing whether the id exists elsewhere (design.md "Cross-profile
+    // write paths that composite FKs do not close").
+    const existing = await db('categories').where({ id, profile_id: req.profileId }).first();
     if (!existing) throw notFound(`Category ${id} not found`);
 
     const updates = {};
@@ -88,10 +94,10 @@ router.patch(
     const row = await db.transaction(async (trx) => {
       let updated = existing;
       if (Object.keys(updates).length) {
-        [updated] = await trx('categories').where({ id }).update(updates).returning('*');
+        [updated] = await trx('categories').where({ id, profile_id: req.profileId }).update(updates).returning('*');
       }
 
-      await applyBudget(trx, { categoryId: id, budget, monthKey });
+      await applyBudget(trx, { profileId: req.profileId, categoryId: id, budget, monthKey });
 
       return updated;
     });

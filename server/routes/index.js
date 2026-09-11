@@ -5,6 +5,7 @@ import { Router } from 'express';
 import db from '../db.js';
 import { asyncHandler } from '../asyncHandler.js';
 import { getMonthPayload } from '../services/months.js';
+import { requireActiveProfile } from '../services/profiles.js';
 import settingsRouter from './settings.js';
 import profilesRouter from './profiles.js';
 import categoriesRouter from './categories.js';
@@ -36,8 +37,14 @@ router.get(
       activeMonth: settingsMap.active_month || null,
     };
 
+    // Phase 3 note: getMonthPayload() now requires an explicit profileId
+    // (services/months.js signature change, task 3.4). Full bootstrap
+    // profile-awareness — a `profiles` array and `settings.activeProfile`
+    // in the response — lands in Phase 4 (task 4.7); this resolves just
+    // enough to keep this call correct until then.
+    const activeProfileSetting = await db('settings').where({ key: 'active_profile' }).first();
     const monthKey = req.query.month || settings.activeMonth;
-    const month = monthKey ? await getMonthPayload(monthKey) : null;
+    const month = monthKey && activeProfileSetting ? await getMonthPayload(activeProfileSetting.value, monthKey) : null;
 
     res.json({
       settings,
@@ -61,9 +68,14 @@ router.use('/settings', settingsRouter);
 // is mounted before the four scoped routers below in Phase 4, once
 // settings/bootstrap/import are also profile-aware.
 router.use('/profiles', profilesRouter);
-router.use('/categories', categoriesRouter);
-router.use('/months', monthsRouter);
-router.use('/transactions', transactionsRouter);
+// Phase 3 mounts requireActiveProfile before categories/months/transactions
+// only — those three are the routers task 3.4-3.8 scope this phase. /import
+// stays unmounted until Phase 4 (task 4.8 + 4.10): it targets `prof_default`
+// unconditionally, never `req.profileId` (design.md "Legacy import lands in
+// the wrong profile" risk), so it gains no correctness from this middleware.
+router.use('/categories', requireActiveProfile, categoriesRouter);
+router.use('/months', requireActiveProfile, monthsRouter);
+router.use('/transactions', requireActiveProfile, transactionsRouter);
 router.use('/import', importRouter);
 
 export default router;

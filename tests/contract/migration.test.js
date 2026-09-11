@@ -3,7 +3,7 @@
 // `db` back to the `001` shape, seeding pre-migration data, then replaying
 // `002` — rather than through the HTTP layer, because the routes are not
 // profile-aware yet at this point in the phased rollout (Phase 3/4).
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import db from '../../server/db.js';
 import { closeDb } from './support.js';
 
@@ -37,6 +37,15 @@ async function restoreCleanLatestState() {
 }
 
 describe('server/migrations/002_budget_profiles.js', () => {
+  // Other contract test files (e.g. isolation.test.js, profiles.test.js)
+  // truncate in their OWN beforeEach but never after their last test, so
+  // whatever they last left behind is still sitting in the shared physical
+  // Postgres when this file's turn comes up (fileParallelism: false runs
+  // files sequentially, not isolated). This suite manipulates the schema
+  // itself, so it cannot tolerate arbitrary leftover rows/tables — force a
+  // known-clean starting point once, up front.
+  beforeAll(restoreCleanLatestState);
+
   afterAll(async () => {
     await restoreCleanLatestState();
     await closeDb();

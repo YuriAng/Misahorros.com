@@ -27,7 +27,7 @@ describe('information_schema invariant: no derived-balance column exists', () =>
     );
     const tableNames = rows.map((r) => r.table_name).filter((name) => name !== 'knex_migrations' && name !== 'knex_migrations_lock');
     expect(tableNames.sort()).toEqual(
-      ['categories', 'category_budgets', 'months', 'settings', 'transactions'].sort()
+      ['budget_profiles', 'categories', 'category_budgets', 'months', 'settings', 'transactions'].sort()
     );
   });
 });
