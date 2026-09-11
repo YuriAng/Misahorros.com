@@ -41,12 +41,16 @@
     <!-- Formulario: nuevo gasto -->
     <div id="expenseFormOverlay" class="overlay" hidden>
       <form id="expenseForm" class="sheet">
-        <h2>Nuevo gasto</h2>
+        <h2 id="expenseFormTitle">Nuevo gasto</h2>
+        <input type="hidden" id="expenseId">
         <label>Monto
           <input type="number" id="expenseAmount" step="0.01" min="0.01" required inputmode="decimal" placeholder="0.00">
         </label>
         <label>Categoría
           <select id="expenseCategory" required></select>
+        </label>
+        <label>Fecha
+          <input type="date" id="expenseDate" required>
         </label>
         <label>Nota (opcional)
           <input type="text" id="expenseNote" maxlength="80" placeholder="Ej. Supermercado">

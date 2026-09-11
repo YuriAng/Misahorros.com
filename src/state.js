@@ -141,8 +141,8 @@ export function getActiveCategories() {
 // el usuario está viendo. Por eso el resultado puede terminar en un mes
 // distinto de `monthKey`, y es al mes devuelto (`created.monthKey`) al que
 // se agrega en el cache.
-export async function addTransaction(monthKey, { categoryId, amount, note }) {
-  const created = await api.createTransaction({ categoryId, amount, note });
+export async function addTransaction(monthKey, { categoryId, amount, note, date }) {
+  const created = await api.createTransaction({ categoryId, amount, note, date });
   const month = ensureCacheMonth(created.monthKey);
   const txn = {
     id: created.id,
@@ -153,6 +153,30 @@ export async function addTransaction(monthKey, { categoryId, amount, note }) {
   };
   month.transactions.unshift(txn);
   return txn;
+}
+
+// El PUT puede mover la transacción a otro mes si `date` cambia de mes
+// (el servidor recalcula `monthKey` a partir de la fecha, igual que en la
+// creación). Por eso se retira del mes de origen (`monthKey`, el que se ve
+// en pantalla) y se inserta en el mes que el servidor devuelva.
+export async function updateTransaction(monthKey, txnId, { categoryId, amount, note, date }) {
+  const updated = await api.updateTransaction(txnId, { categoryId, amount, note, date });
+
+  const sourceMonth = cache.months[monthKey];
+  if (sourceMonth) {
+    sourceMonth.transactions = sourceMonth.transactions.filter(t => t.id !== txnId);
+  }
+
+  const targetMonth = ensureCacheMonth(updated.monthKey);
+  targetMonth.transactions.unshift({
+    id: updated.id,
+    categoryId: updated.categoryId,
+    amount: updated.amount,
+    note: updated.note,
+    date: updated.date
+  });
+
+  return updated;
 }
 
 export async function deleteTransaction(monthKey, txnId) {

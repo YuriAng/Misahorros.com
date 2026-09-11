@@ -12,7 +12,7 @@ import { renderApp } from './render.js';
 import {
   bootstrap, getData, getActiveMonth, setActiveMonth,
   setIncome, addCategory, updateCategory, archiveCategory,
-  addTransaction, deleteTransaction, getCategoryBudget
+  addTransaction, updateTransaction, deleteTransaction, getCategoryBudget
 } from './state.js';
 import { ApiError, getImportStatus, importLegacy } from './api.js';
 import { loadData, STORAGE_KEY } from './storage.js';
@@ -85,6 +85,16 @@ function withBusy(getControl, fn) {
 
 function submitButtonOf(formId) {
   return () => document.getElementById(formId).querySelector('button[type="submit"]');
+}
+
+// Formatea a "YYYY-MM-DD" en hora local (no UTC) para que el <input type="date">
+// muestre el mismo día que el usuario ve en la lista de gastos.
+function toDateInputValue(date) {
+  const d = date ? new Date(date) : new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 // --- Navegación entre meses ---
@@ -196,10 +206,13 @@ document.getElementById('deleteCategoryBtn').addEventListener('click', () => {
   )();
 });
 
-// --- Gastos: alta rápida y borrado ---
+// --- Gastos: alta, edición y borrado ---
 
 document.getElementById('fabAddExpense').addEventListener('click', () => {
   document.getElementById('expenseForm').reset();
+  document.getElementById('expenseFormTitle').textContent = 'Nuevo gasto';
+  document.getElementById('expenseId').value = '';
+  document.getElementById('expenseDate').value = toDateInputValue();
   openOverlay('expenseFormOverlay');
 });
 
@@ -212,22 +225,45 @@ document.getElementById('expenseForm').addEventListener('submit', withBusy(
       alert('Primero crea una categoría para poder registrar gastos.');
       return;
     }
-    await addTransaction(getActiveMonth(), {
+    const id = document.getElementById('expenseId').value;
+    const payload = {
       categoryId,
       amount: document.getElementById('expenseAmount').value,
-      note: document.getElementById('expenseNote').value
-    });
+      note: document.getElementById('expenseNote').value,
+      date: document.getElementById('expenseDate').value
+    };
+    if (id) {
+      await updateTransaction(getActiveMonth(), id, payload);
+    } else {
+      await addTransaction(getActiveMonth(), payload);
+    }
     closeOverlay('expenseFormOverlay');
   }
 ));
 
 document.getElementById('transactionsList').addEventListener('click', (e) => {
-  const btn = e.target.closest('.delete-transaction');
-  if (!btn) return;
+  const editBtn = e.target.closest('.edit-transaction');
+  if (editBtn) {
+    const month = getData().months[getActiveMonth()];
+    const txn = month?.transactions.find(t => t.id === editBtn.dataset.id);
+    if (!txn) return;
+
+    document.getElementById('expenseFormTitle').textContent = 'Editar gasto';
+    document.getElementById('expenseId').value = txn.id;
+    document.getElementById('expenseAmount').value = txn.amount;
+    document.getElementById('expenseCategory').value = txn.categoryId;
+    document.getElementById('expenseDate').value = toDateInputValue(txn.date);
+    document.getElementById('expenseNote').value = txn.note || '';
+    openOverlay('expenseFormOverlay');
+    return;
+  }
+
+  const deleteBtn = e.target.closest('.delete-transaction');
+  if (!deleteBtn) return;
   if (!confirm('¿Eliminar este gasto? El monto volverá al saldo disponible de su categoría.')) return;
   withBusy(
-    () => btn,
-    async () => { await deleteTransaction(getActiveMonth(), btn.dataset.id); }
+    () => deleteBtn,
+    async () => { await deleteTransaction(getActiveMonth(), deleteBtn.dataset.id); }
   )();
 });
 

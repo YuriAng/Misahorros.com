@@ -119,6 +119,7 @@ function renderTransactions() {
         </div>
         <span class="transaction-date">${dateLabel}</span>
         <span class="transaction-amount">-${formatCurrency(t.amount, currency)}</span>
+        <button class="btn-icon-sm edit-transaction" data-id="${t.id}" aria-label="Editar gasto">✎</button>
         <button class="btn-icon-sm delete-transaction" data-id="${t.id}" aria-label="Eliminar gasto">🗑</button>
       </div>
     `;
