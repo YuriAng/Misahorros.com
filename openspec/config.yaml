@@ -26,6 +26,13 @@ rules:
       - Follow existing code patterns (plain ES modules, no framework)
       - Maintain database schema compatibility via Knex migrations
       - Preserve contract test coverage for API surface and data integrity
+    # Compliance record (task 7.5, change `multiple-budgets`): strict_tdd
+    # and apply.tdd were honored end-to-end across all 7 phases — every
+    # migration assertion, profile-CRUD invariant, cross-profile isolation
+    # guarantee, and parity check was written as a RED test referencing
+    # production code that did not exist or did not yet cover the new
+    # behavior, run to confirm failure, then made GREEN with the minimum
+    # implementation. See tasks.md for the full per-task RED/GREEN trail.
     tdd: true
     test_command: "npm test"
   verify:

@@ -1,14 +1,19 @@
-// Task 7.6 — Parity test: server-computed `categoryTotals`/`totals` (via
+// Parity test: server-computed `categoryTotals`/`totals` (via
 // `getMonthPayload` / GET /api/months/{k}) equal the client's pure
 // functions (`getCategorySpent`/`getCategoryBudget`/`getCategoryRemaining`/
 // `getMonthTotals` from src/state.js) over the SAME shared fixture data
 // (design.md "Decision: Balances derived in SQL; client re-derives from
 // cached rows" — "a Vitest parity test asserts server aggregates equal
 // client functions over the same fixture, so drift fails the build").
+// Task 7.1-7.2 extends this file: parity MUST independently hold for a
+// second, non-default profile too — the derivation logic is profile-blind,
+// but the fixture that feeds it must come from each profile's own scoped
+// data, never a mix (budget-profiles spec, "Full Data Isolation Across
+// Profiles").
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import app from '../../server/index.js';
-import { resetDb, closeDb, insertCategory } from './support.js';
+import { resetDb, closeDb, insertCategory, setActiveProfile } from './support.js';
 
 // src/state.js's top-level `let cache = defaultData()` only touches
 // localStorage lazily (inside storage.js's loadData/api.js's fetch calls),
@@ -106,5 +111,58 @@ describe('server/client balance parity', () => {
     expect(getCategorySpent('2026-09', category.id)).toBe(0);
     expect(getCategoryRemaining('2026-09', category.id)).toBe(0);
     expect(getMonthTotals('2026-09')).toEqual(server.body.totals);
+  });
+
+  it('parity holds independently for a second, non-default profile (task 7.1/7.2)', async () => {
+    // Seed the default profile with data that must NOT influence profile B's
+    // parity check — the two derivations run over B's own fixture only.
+    const catDefault = await insertCategory({ id: 'cat_parity_default', name: 'Comida' });
+    await request(app).put(`/api/months/${MONTH_KEY}/income`).send({ amount: 5000 });
+    await request(app).put(`/api/months/${MONTH_KEY}/budgets/${catDefault.id}`).send({ amount: 4000 });
+
+    const createProfileRes = await request(app).post('/api/profiles').send({ name: 'Negocio' });
+    const profileB = createProfileRes.body;
+    await setActiveProfile(profileB.id);
+
+    const catB1 = await insertCategory({ id: 'cat_parity_b1', name: 'Ventas', profileId: profileB.id });
+    const catB2 = await insertCategory({ id: 'cat_parity_b2', name: 'Insumos', profileId: profileB.id });
+
+    await request(app).put(`/api/months/${MONTH_KEY}/income`).send({ amount: 800 });
+    await request(app).put(`/api/months/${MONTH_KEY}/budgets/${catB1.id}`).send({ amount: 300 });
+    await request(app)
+      .post('/api/transactions')
+      .send({ categoryId: catB1.id, amount: 120, date: `${MONTH_KEY}-03T12:00:00.000Z` });
+    await request(app)
+      .post('/api/transactions')
+      .send({ categoryId: catB2.id, amount: 60, date: `${MONTH_KEY}-04T12:00:00.000Z` });
+
+    const server = await request(app).get(`/api/months/${MONTH_KEY}`);
+    expect(server.status).toBe(200);
+    expect(server.body.income.amount).toBe(800);
+    // Profile A's fixture (income 5000, cat_parity_default budget 4000) must
+    // be absent from profile B's server response, or the parity check below
+    // would trivially pass against a contaminated fixture.
+    expect(server.body.categoryTotals[catDefault.id]).toBeUndefined();
+
+    const state = getData();
+    state.months[MONTH_KEY] = {
+      income: { ...server.body.income },
+      budgets: { ...server.body.budgets },
+      transactions: server.body.transactions.map((t) => ({ ...t })),
+    };
+
+    for (const categoryId of [catB1.id, catB2.id]) {
+      const serverTotals = server.body.categoryTotals[categoryId];
+      expect(getCategoryBudget(MONTH_KEY, categoryId)).toBe(serverTotals.budget);
+      expect(getCategorySpent(MONTH_KEY, categoryId)).toBe(serverTotals.spent);
+      expect(getCategoryRemaining(MONTH_KEY, categoryId)).toBe(serverTotals.remaining);
+    }
+
+    // catB2 has spend but no budget — a distinct code path from catB1
+    // (budget + spend), so this triangulates the aggregate, not just repeats it.
+    expect(server.body.categoryTotals[catB2.id]).toEqual({ budget: 0, spent: 60, remaining: -60 });
+    expect(getCategoryRemaining(MONTH_KEY, catB2.id)).toBe(-60);
+
+    expect(getMonthTotals(MONTH_KEY)).toEqual(server.body.totals);
   });
 });
