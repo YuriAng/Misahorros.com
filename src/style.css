@@ -52,6 +52,17 @@ body {
   color: var(--color-text-muted);
 }
 
+.profile-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-nav select {
+  flex: 1;
+  min-width: 0;
+}
+
 .month-nav span {
   min-width: 130px;
   text-align: center;

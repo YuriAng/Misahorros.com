@@ -13,10 +13,12 @@ export function defaultData() {
     version: 1,
     settings: {
       currency: 'USD',
-      activeMonth: null // se asigna al mes actual la primera vez que corre la app
+      activeMonth: null, // se asigna al mes actual la primera vez que corre la app
+      activeProfile: null // lo resuelve el servidor; nunca se infiere en el cliente
     },
     categories: [],
-    months: {}
+    months: {},
+    profiles: []
   };
 }
 

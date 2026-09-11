@@ -56,6 +56,7 @@ export async function bootstrap() {
   const initial = await api.getBootstrap();
   cache.settings = { ...initial.settings };
   cache.categories = initial.categories.map(c => ({ ...c }));
+  cache.profiles = initial.profiles.map(p => ({ ...p }));
 
   // Primera vez que corre la app contra este servidor: no hay mes activo
   // todavía. Se fija al mes actual localmente y se persiste, igual que el
@@ -133,6 +134,50 @@ export async function archiveCategory(id) {
 
 export function getActiveCategories() {
   return cache.categories.filter(c => !c.archived);
+}
+
+// --- Presupuestos (profiles) ---
+
+export function getProfiles() {
+  return cache.profiles.filter(p => !p.archived);
+}
+
+export function getActiveProfile() {
+  return cache.profiles.find(p => p.id === cache.settings.activeProfile) || null;
+}
+
+export async function addProfile(name) {
+  const created = await api.createProfile({ name });
+  cache.profiles.push(created);
+  return created;
+}
+
+export async function renameProfile(id, name) {
+  const updated = await api.renameProfile(id, name);
+  const idx = cache.profiles.findIndex(p => p.id === id);
+  if (idx !== -1) cache.profiles[idx] = updated;
+  return updated;
+}
+
+// No se borra físicamente: se archiva (mismo criterio que archiveCategory).
+export async function archiveProfile(id) {
+  await api.archiveProfile(id);
+  const idx = cache.profiles.findIndex(p => p.id === id);
+  if (idx !== -1) cache.profiles[idx] = { ...cache.profiles[idx], archived: true };
+}
+
+// El ÚNICO lugar donde el cache se reemplaza por completo (design.md
+// "Decision: Client cache is reset on switch, not keyed by profile"):
+// nunca una fusión, para que una fila del perfil anterior sea
+// IRREPRESENTABLE en el cache después del cambio, igual que la garantía de
+// FK compuesta del lado del servidor.
+export async function setActiveProfile(profileId) {
+  const payload = await api.setActiveProfile(profileId);
+  cache.settings = { ...payload.settings };
+  cache.profiles = payload.profiles.map(p => ({ ...p }));
+  cache.categories = payload.categories.map(c => ({ ...c }));
+  cache.months = {};
+  if (payload.month) cache.months[payload.month.monthKey] = monthFromPayload(payload.month);
 }
 
 // `monthKey` se acepta por compatibilidad con el llamador (siempre el mes

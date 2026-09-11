@@ -123,6 +123,28 @@ export function deleteTransaction(id) {
   return request(`/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+// --- profiles ---
+
+export function getProfiles() {
+  return request('/profiles');
+}
+
+export function createProfile(payload) {
+  return request('/profiles', { method: 'POST', body: payload });
+}
+
+export function renameProfile(id, name) {
+  return request(`/profiles/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name } });
+}
+
+export function archiveProfile(id) {
+  return request(`/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function setActiveProfile(id) {
+  return request('/profiles/active', { method: 'PUT', body: { profileId: id } });
+}
+
 // --- legacy import ---
 
 export function getImportStatus() {

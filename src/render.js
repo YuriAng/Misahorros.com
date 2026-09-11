@@ -2,16 +2,27 @@
 
 import {
   getData, getActiveMonth, getActiveCategories,
-  getCategorySpent, getCategoryBudget, getCategoryRemaining, getMonthTotals
+  getCategorySpent, getCategoryBudget, getCategoryRemaining, getMonthTotals,
+  getProfiles
 } from './state.js';
 import { formatCurrency, formatMonthLabel } from './utils.js';
 
 export function renderApp() {
+  renderProfileSelect();
   renderMonthLabel();
   renderSummary();
   renderCategories();
   renderTransactions();
   renderCategorySelectOptions();
+}
+
+function renderProfileSelect() {
+  const select = document.getElementById('profileSelect');
+  const profiles = getProfiles();
+  const activeId = getData().settings.activeProfile;
+  select.innerHTML = profiles
+    .map(p => `<option value="${p.id}" ${p.id === activeId ? 'selected' : ''}>${p.name}</option>`)
+    .join('');
 }
 
 // Estado visual de una categoría o del total, según % consumido.

@@ -1,4 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// `setActiveProfile()` is the ONLY place the cache is reset (design.md
+// "Decision: Client cache is reset on switch, not keyed by profile"). The
+// stub replaces just `setActiveProfile` so every other `api.*` call in this
+// file keeps hitting the real (unmocked) implementation, matching the
+// existing convention of this file exercising src/state.js in isolation.
+vi.mock('../../src/api.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, setActiveProfile: vi.fn() };
+});
 
 // src/state.js imports src/storage.js, which reads/writes the browser
 // `localStorage` global at module load time. The vitest environment for
@@ -25,8 +35,9 @@ function createLocalStorageMock() {
 
 globalThis.localStorage = createLocalStorageMock();
 
-const { getData, getCategorySpent, getCategoryBudget, getCategoryRemaining, getMonthTotals } =
+const { getData, getCategorySpent, getCategoryBudget, getCategoryRemaining, getMonthTotals, setActiveProfile } =
   await import('../../src/state.js');
+const api = await import('../../src/api.js');
 
 const MONTH_KEY = '2026-01';
 
@@ -99,6 +110,60 @@ describe('getMonthTotals', () => {
       totalBudgeted: 500,
       totalSpent: 175,
       totalAvailable: 1000 - 175
+    });
+  });
+});
+
+// design.md "Decision: Client cache is reset on switch, not keyed by
+// profile": setActiveProfile() replaces the cache WHOLESALE, never a merge,
+// so a row from the profile just left behind is unrepresentable afterwards.
+describe('setActiveProfile', () => {
+  it('replaces settings/profiles/categories and empties cache.months, so a stale row from the previous profile is unrepresentable', async () => {
+    const state = getData();
+    // Pollute the cache with data belonging to the profile being left, in a
+    // month that the new profile's payload does NOT mention.
+    state.months['2026-02'] = {
+      income: { amount: 999, updatedAt: '2026-02-01T00:00:00.000Z' },
+      budgets: { cat_stale: 100 },
+      transactions: [{ id: 'txn_stale', categoryId: 'cat_stale', amount: 10, note: '', date: '2026-02-01T00:00:00.000Z' }]
+    };
+    state.categories = [
+      { id: 'cat_stale', name: 'Stale', icon: '❓', color: '#000000', archived: false, createdAt: '2026-01-01T00:00:00.000Z' }
+    ];
+    state.settings.activeProfile = 'prof_default';
+    state.profiles = [{ id: 'prof_default', name: 'General', archived: false, createdAt: '2026-01-01T00:00:00.000Z' }];
+
+    api.setActiveProfile.mockResolvedValueOnce({
+      settings: { currency: 'USD', activeMonth: MONTH_KEY, activeProfile: 'prof_negocio' },
+      profiles: [
+        { id: 'prof_default', name: 'General', archived: false, createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'prof_negocio', name: 'Negocio', archived: false, createdAt: '2026-01-02T00:00:00.000Z' }
+      ],
+      categories: [
+        { id: 'cat_fresh', name: 'Fresh', icon: '🆕', color: '#111111', archived: false, createdAt: '2026-01-02T00:00:00.000Z' }
+      ],
+      month: {
+        monthKey: MONTH_KEY,
+        income: { amount: 500, updatedAt: '2026-01-01T00:00:00.000Z' },
+        budgets: {},
+        transactions: []
+      }
+    });
+
+    await setActiveProfile('prof_negocio');
+
+    expect(api.setActiveProfile).toHaveBeenCalledWith('prof_negocio');
+    expect(getData().settings.activeProfile).toBe('prof_negocio');
+    expect(getData().categories).toEqual([
+      { id: 'cat_fresh', name: 'Fresh', icon: '🆕', color: '#111111', archived: false, createdAt: '2026-01-02T00:00:00.000Z' }
+    ]);
+    expect(getData().profiles.map(p => p.id)).toEqual(['prof_default', 'prof_negocio']);
+    // The stale month is gone entirely — not zeroed, unrepresentable.
+    expect(getData().months['2026-02']).toBeUndefined();
+    expect(getData().months[MONTH_KEY]).toEqual({
+      income: { amount: 500, updatedAt: '2026-01-01T00:00:00.000Z' },
+      budgets: {},
+      transactions: []
     });
   });
 });

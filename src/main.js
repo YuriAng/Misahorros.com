@@ -12,7 +12,8 @@ import { renderApp } from './render.js';
 import {
   bootstrap, getData, getActiveMonth, setActiveMonth,
   setIncome, addCategory, updateCategory, archiveCategory,
-  addTransaction, updateTransaction, deleteTransaction, getCategoryBudget
+  addTransaction, updateTransaction, deleteTransaction, getCategoryBudget,
+  getActiveProfile, addProfile, renameProfile, archiveProfile, setActiveProfile
 } from './state.js';
 import { ApiError, getImportStatus, importLegacy } from './api.js';
 import { loadData, STORAGE_KEY } from './storage.js';
@@ -108,6 +109,65 @@ document.getElementById('nextMonth').addEventListener('click', withBusy(
   () => document.getElementById('nextMonth'),
   async () => { await setActiveMonth(shiftMonthKey(getActiveMonth(), 1)); }
 ));
+
+// --- Presupuestos (profiles): cambiar activo / crear / renombrar / archivar ---
+
+document.getElementById('profileSelect').addEventListener('change', withBusy(
+  () => document.getElementById('profileSelect'),
+  async (e) => { await setActiveProfile(e.target.value); }
+));
+
+function openProfileFormFor(profile) {
+  document.getElementById('profileForm').reset();
+  if (profile) {
+    document.getElementById('profileFormTitle').textContent = 'Presupuesto activo';
+    document.getElementById('profileId').value = profile.id;
+    document.getElementById('profileName').value = profile.name;
+    document.getElementById('deleteProfileBtn').hidden = false;
+  } else {
+    document.getElementById('profileFormTitle').textContent = 'Nuevo presupuesto';
+    document.getElementById('profileId').value = '';
+    document.getElementById('deleteProfileBtn').hidden = true;
+  }
+  openOverlay('profileFormOverlay');
+}
+
+document.getElementById('manageProfilesBtn').addEventListener('click', () => {
+  openProfileFormFor(getActiveProfile());
+});
+
+document.getElementById('newProfileBtn').addEventListener('click', () => {
+  openProfileFormFor(null);
+});
+
+document.getElementById('profileForm').addEventListener('submit', withBusy(
+  submitButtonOf('profileForm'),
+  async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('profileId').value;
+    const name = document.getElementById('profileName').value;
+    if (id) {
+      await renameProfile(id, name);
+    } else {
+      await addProfile(name);
+    }
+    closeOverlay('profileFormOverlay');
+  }
+));
+
+document.getElementById('deleteProfileBtn').addEventListener('click', () => {
+  const id = document.getElementById('profileId').value;
+  if (!id) return;
+  const ok = confirm('¿Archivar este presupuesto? Deja de aparecer en el selector, pero su histórico se conserva. Si es el activo, cambia a otro primero.');
+  if (!ok) return;
+  withBusy(
+    () => document.getElementById('deleteProfileBtn'),
+    async () => {
+      await archiveProfile(id);
+      closeOverlay('profileFormOverlay');
+    }
+  )();
+});
 
 // --- Ingreso mensual ---
 
