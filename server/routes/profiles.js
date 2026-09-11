@@ -6,18 +6,10 @@ import db from '../db.js';
 import { asyncHandler } from '../asyncHandler.js';
 import { badRequest, conflict, notFound } from '../errors.js';
 import { generateId } from '../utils.js';
-import { archiveProfile } from '../services/profiles.js';
+import { archiveProfile, serializeProfile } from '../services/profiles.js';
+import { buildBootstrapPayload } from '../services/bootstrap.js';
 
 const router = Router();
-
-function serializeProfile(row) {
-  return {
-    id: row.id,
-    name: row.name,
-    archived: row.archived,
-    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
-  };
-}
 
 // Case-insensitive, btrim-insensitive duplicate check among LIVE profiles
 // only — mirrors the DB's own `budget_profiles_live_name_unique` partial
@@ -96,6 +88,34 @@ router.delete(
   asyncHandler(async (req, res) => {
     await archiveProfile(req.params.id);
     res.status(204).end();
+  })
+);
+
+// budget-api spec: "Profile Management Endpoints" — the write (UPSERT
+// settings.active_profile) and the read (the new bootstrap payload) happen
+// in one transaction, so the response can never describe a profile other
+// than the one just activated (design.md "Sequence: Switching Profile").
+router.put(
+  '/active',
+  asyncHandler(async (req, res) => {
+    const { profileId } = req.body || {};
+    if (!profileId || typeof profileId !== 'string') {
+      throw badRequest('profileId is required', 'profileId');
+    }
+
+    const payload = await db.transaction(async (trx) => {
+      const profile = await trx('budget_profiles').where({ id: profileId }).first();
+      if (!profile) throw notFound(`Profile ${profileId} not found`);
+      if (profile.archived) {
+        throw conflict('Cannot switch to an archived profile.', 'profile_archived');
+      }
+
+      await trx('settings').insert({ key: 'active_profile', value: profileId }).onConflict('key').merge();
+
+      return buildBootstrapPayload(trx, { profileId });
+    });
+
+    res.json(payload);
   })
 );
 

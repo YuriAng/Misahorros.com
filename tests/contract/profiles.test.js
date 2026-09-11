@@ -161,3 +161,55 @@ describe('DELETE /api/profiles/:id (archive)', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// task 4.5/4.6 — budget-api spec: "Creating and switching to a new profile",
+// "Setting active profile to an archived profile is rejected".
+describe('PUT /api/profiles/active', () => {
+  it('switches the active profile and returns a full bootstrap payload for it', async () => {
+    const created = await request(app).post('/api/profiles').send({ name: 'Negocio' });
+
+    const res = await request(app).put('/api/profiles/active').send({ profileId: created.body.id });
+    expect(res.status).toBe(200);
+    expect(res.body.settings.activeProfile).toBe(created.body.id);
+    expect(res.body.profiles.map((p) => p.id)).toContain(created.body.id);
+    expect(res.body.categories).toEqual([]);
+    expect(res.body.month).toBeNull();
+
+    const settings = await request(app).get('/api/settings');
+    expect(settings.body.activeProfile).toBe(created.body.id);
+  });
+
+  it('only returns the newly active profile\'s categories, not the previous profile\'s', async () => {
+    await request(app).post('/api/categories').send({ name: 'Comida (default profile)' });
+    const created = await request(app).post('/api/profiles').send({ name: 'Negocio' });
+
+    const res = await request(app).put('/api/profiles/active').send({ profileId: created.body.id });
+    expect(res.status).toBe(200);
+    expect(res.body.categories).toEqual([]);
+  });
+
+  it('responds 404 for an unknown profileId and leaves the active profile unchanged', async () => {
+    const res = await request(app).put('/api/profiles/active').send({ profileId: 'prof_ffffffff' });
+    expect(res.status).toBe(404);
+
+    const settings = await request(app).get('/api/settings');
+    expect(settings.body.activeProfile).toBe(DEFAULT_PROFILE_ID);
+  });
+
+  it('responds 409 for an archived profileId and leaves the active profile unchanged', async () => {
+    const created = await request(app).post('/api/profiles').send({ name: 'Viejo' });
+    await request(app).delete(`/api/profiles/${created.body.id}`);
+
+    const res = await request(app).put('/api/profiles/active').send({ profileId: created.body.id });
+    expect(res.status).toBe(409);
+
+    const settings = await request(app).get('/api/settings');
+    expect(settings.body.activeProfile).toBe(DEFAULT_PROFILE_ID);
+  });
+
+  it('responds 400 when profileId is missing', async () => {
+    const res = await request(app).put('/api/profiles/active').send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error.field).toBe('profileId');
+  });
+});

@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import app from '../../server/index.js';
-import { resetDb, closeDb } from './support.js';
+import { resetDb, closeDb, DEFAULT_PROFILE_ID } from './support.js';
 
 beforeEach(resetDb);
 afterAll(closeDb);
@@ -16,11 +16,12 @@ describe('GET /api/health', () => {
 });
 
 describe('GET /api/bootstrap', () => {
-  it('returns settings, categories and a null month on a fresh database', async () => {
+  it('returns settings, profiles, categories and a null month on a fresh database', async () => {
     const res = await request(app).get('/api/bootstrap');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      settings: { currency: 'USD', activeMonth: null },
+      settings: { currency: 'USD', activeMonth: null, activeProfile: DEFAULT_PROFILE_ID },
+      profiles: [{ id: DEFAULT_PROFILE_ID, name: 'General', archived: false, createdAt: expect.any(String) }],
       categories: [],
       month: null,
     });
@@ -37,5 +38,18 @@ describe('GET /api/bootstrap', () => {
     expect(res.body.month.monthKey).toBe('2026-04');
     expect(res.body.month.materialized).toBe(true);
     expect(res.body.categories).toHaveLength(1);
+  });
+
+  // task 4.7 — the profiles array only lists live profiles, mirroring
+  // GET /api/profiles' default (an archived profile is never the active
+  // one, so it never needs to appear in the switcher payload).
+  it('lists only live profiles', async () => {
+    const created = await request(app).post('/api/profiles').send({ name: 'Viejo' });
+    await request(app).delete(`/api/profiles/${created.body.id}`);
+
+    const res = await request(app).get('/api/bootstrap');
+    const ids = res.body.profiles.map((p) => p.id);
+    expect(ids).toContain(DEFAULT_PROFILE_ID);
+    expect(ids).not.toContain(created.body.id);
   });
 });

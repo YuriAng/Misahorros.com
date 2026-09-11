@@ -19,6 +19,23 @@ import { conflict, internalError, notFound } from '../errors.js';
  * @param {import('express').Response} res
  * @param {import('express').NextFunction} next
  */
+/**
+ * Serializes a `budget_profiles` row into the response shape shared by
+ * `server/routes/profiles.js` (list/create/rename) and
+ * `server/services/bootstrap.js` (the `profiles` array in every
+ * bootstrap-shaped payload) — one shape, one place to keep it correct.
+ *
+ * @param {object} row
+ */
+export function serializeProfile(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    archived: row.archived,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  };
+}
+
 export async function requireActiveProfile(req, res, next) {
   try {
     const row = await db('settings').where({ key: 'active_profile' }).first();

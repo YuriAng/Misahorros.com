@@ -13,6 +13,14 @@ import { monthKeyFromDate } from '../services/months.js';
 const router = Router();
 const MONTH_KEY_RE = /^[0-9]{4}-(0[1-9]|1[0-2])$/;
 
+// legacy-data-import spec: "Import Targets the Default Profile" — every
+// imported row is pinned to this literal id, never to `req.profileId`
+// (design.md "Legacy import lands in the wrong profile" risk: a user who
+// creates a second profile, switches to it, then imports must not scatter
+// years of history into the wrong budget). Matches the literal id the
+// migration seeds (`server/migrations/002_budget_profiles.js`).
+const DEFAULT_PROFILE_ID = 'prof_default';
+
 // Structural validation of the `budgetpwa_data_v1` shape. Throws `400` on
 // the first violation and performs no I/O, so a malformed payload never
 // reaches the transaction (spec: "Malformed Source Rejected").
@@ -125,6 +133,7 @@ router.post(
         const inserted = await trx('categories')
           .insert({
             id: category.id,
+            profile_id: DEFAULT_PROFILE_ID,
             name: String(category.name).trim(),
             icon: category.icon ? String(category.icon).trim() : '💸',
             color: category.color || '#4F8EF7',
@@ -149,29 +158,40 @@ router.post(
         }
       }
 
-      // 2) months — ON CONFLICT (month_key) DO NOTHING
+      // 2) months — months' PK is now the composite (profile_id, month_key)
+      // (migration 002), so the conflict target must grow to match; a bare
+      // `month_key` no longer names any unique constraint.
       for (const monthKey of monthKeysNeeded) {
         const month = payload.months[monthKey];
         const income = month?.income || {};
         const inserted = await trx('months')
           .insert({
+            profile_id: DEFAULT_PROFILE_ID,
             month_key: monthKey,
             income_amount: Number(income.amount) || 0,
             income_updated_at: income.updatedAt ? new Date(income.updatedAt) : null,
           })
-          .onConflict('month_key')
+          .onConflict(['profile_id', 'month_key'])
           .ignore()
           .returning('month_key');
         if (inserted.length) counts.months.imported++;
         else counts.months.skipped++;
       }
 
-      // 3) category_budgets — ON CONFLICT (month_key, category_id) DO NOTHING
+      // 3) category_budgets — onConflict tuple widened to the composite PK
+      // (design.md "onConflict tuples that grow to three columns" —
+      // deferred here from task 3.9 since widening it before the insert
+      // carried profile_id would have been meaningless).
       for (const [monthKey, month] of Object.entries(payload.months)) {
         for (const [categoryId, amount] of Object.entries(month.budgets || {})) {
           const inserted = await trx('category_budgets')
-            .insert({ month_key: monthKey, category_id: categoryId, amount: Number(amount) || 0 })
-            .onConflict(['month_key', 'category_id'])
+            .insert({
+              profile_id: DEFAULT_PROFILE_ID,
+              month_key: monthKey,
+              category_id: categoryId,
+              amount: Number(amount) || 0,
+            })
+            .onConflict(['profile_id', 'month_key', 'category_id'])
             .ignore()
             .returning('category_id');
           if (inserted.length) counts.budgets.imported++;
@@ -189,6 +209,7 @@ router.post(
           const inserted = await trx('transactions')
             .insert({
               id: txn.id,
+              profile_id: DEFAULT_PROFILE_ID,
               month_key: derivedMonthKey,
               category_id: txn.categoryId,
               amount: Number(txn.amount),

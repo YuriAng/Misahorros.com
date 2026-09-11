@@ -3,24 +3,24 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import app from '../../server/index.js';
-import { resetDb, closeDb, monthsRowCount } from './support.js';
+import { resetDb, closeDb, monthsRowCount, DEFAULT_PROFILE_ID } from './support.js';
 
 beforeEach(resetDb);
 afterAll(closeDb);
 
 describe('GET /api/settings', () => {
-  it('returns default currency USD and a null activeMonth on a fresh database', async () => {
+  it('returns default currency USD, a null activeMonth, and the seeded activeProfile on a fresh database', async () => {
     const res = await request(app).get('/api/settings');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ currency: 'USD', activeMonth: null });
+    expect(res.body).toEqual({ currency: 'USD', activeMonth: null, activeProfile: DEFAULT_PROFILE_ID });
   });
 });
 
 describe('PUT /api/settings', () => {
-  it('updates currency and activeMonth and returns the merged settings', async () => {
+  it('updates currency and activeMonth and returns the merged settings, activeProfile unchanged', async () => {
     const res = await request(app).put('/api/settings').send({ currency: 'EUR', activeMonth: '2026-03' });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ currency: 'EUR', activeMonth: '2026-03' });
+    expect(res.body).toEqual({ currency: 'EUR', activeMonth: '2026-03', activeProfile: DEFAULT_PROFILE_ID });
   });
 
   it('never creates a months row as a side effect of setting activeMonth', async () => {
@@ -34,6 +34,26 @@ describe('PUT /api/settings', () => {
   it('leaves currency unchanged when only activeMonth is sent', async () => {
     await request(app).put('/api/settings').send({ currency: 'EUR' });
     const res = await request(app).put('/api/settings').send({ activeMonth: '2026-08' });
-    expect(res.body).toEqual({ currency: 'EUR', activeMonth: '2026-08' });
+    expect(res.body).toEqual({ currency: 'EUR', activeMonth: '2026-08', activeProfile: DEFAULT_PROFILE_ID });
+  });
+
+  // budget-api spec: "PUT /api/settings rejects an active profile field"
+  it('rejects a body containing activeProfile with 400 and leaves the active profile unchanged', async () => {
+    const res = await request(app).put('/api/settings').send({ activeProfile: 'prof_other0001' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.field).toBe('activeProfile');
+
+    const after = await request(app).get('/api/settings');
+    expect(after.body.activeProfile).toBe(DEFAULT_PROFILE_ID);
+  });
+
+  it('rejects activeProfile even when sent alongside a valid currency update', async () => {
+    const res = await request(app).put('/api/settings').send({ currency: 'EUR', activeProfile: 'prof_other0001' });
+    expect(res.status).toBe(400);
+
+    const after = await request(app).get('/api/settings');
+    // The currency update must not have been applied either — the whole
+    // request is rejected, not partially applied.
+    expect(after.body.currency).toBe('USD');
   });
 });
