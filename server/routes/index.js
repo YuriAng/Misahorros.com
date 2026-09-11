@@ -6,6 +6,7 @@ import db from '../db.js';
 import { asyncHandler } from '../asyncHandler.js';
 import { getMonthPayload } from '../services/months.js';
 import settingsRouter from './settings.js';
+import profilesRouter from './profiles.js';
 import categoriesRouter from './categories.js';
 import monthsRouter from './months.js';
 import transactionsRouter from './transactions.js';
@@ -54,6 +55,12 @@ router.get(
 );
 
 router.use('/settings', settingsRouter);
+// Unscoped like /settings: profiles themselves are managed here, so this
+// router cannot depend on requireActiveProfile resolving one first
+// (design.md "Enforcement at the router mount point"). requireActiveProfile
+// is mounted before the four scoped routers below in Phase 4, once
+// settings/bootstrap/import are also profile-aware.
+router.use('/profiles', profilesRouter);
 router.use('/categories', categoriesRouter);
 router.use('/months', monthsRouter);
 router.use('/transactions', transactionsRouter);

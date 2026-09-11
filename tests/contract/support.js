@@ -4,12 +4,22 @@
 // into its own module graph, so this is one pool per file, not global).
 import db from '../../server/db.js';
 
-// All 5 tables in one statement (CASCADE), so FK RESTRICT constraints
-// between them never block the truncate regardless of order.
+export const DEFAULT_PROFILE_ID = 'prof_default';
+export const DEFAULT_PROFILE_NAME = 'General';
+
+// All 6 tables in one statement (CASCADE), so FK RESTRICT constraints
+// between them never block the truncate regardless of order. Reseeds the
+// single default profile + `settings.active_profile` immediately after,
+// mirroring exactly what migration 002 leaves behind on a real database —
+// every contract test's baseline is "the migration has just run", never an
+// empty budget_profiles table (budget-profiles spec: "the server MUST NOT
+// rely on runtime fallback logic for an unset value").
 export async function resetDb() {
   await db.raw(
-    'TRUNCATE TABLE transactions, category_budgets, months, categories, settings RESTART IDENTITY CASCADE'
+    'TRUNCATE TABLE transactions, category_budgets, months, categories, settings, budget_profiles RESTART IDENTITY CASCADE'
   );
+  await db('budget_profiles').insert({ id: DEFAULT_PROFILE_ID, name: DEFAULT_PROFILE_NAME });
+  await db('settings').insert({ key: 'active_profile', value: DEFAULT_PROFILE_ID });
 }
 
 export async function closeDb() {

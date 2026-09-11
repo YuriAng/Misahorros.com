@@ -21,6 +21,10 @@ export function notFound(message) {
   return new ApiError(404, 'not_found', message);
 }
 
-export function conflict(message) {
-  return new ApiError(409, 'conflict', message);
+export function conflict(message, code = 'conflict') {
+  return new ApiError(409, code, message);
+}
+
+export function internalError(message) {
+  return new ApiError(500, 'internal_error', message);
 }
