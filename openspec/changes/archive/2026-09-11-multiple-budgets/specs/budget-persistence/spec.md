@@ -1,11 +1,6 @@
-# Budget Persistence Specification
+# Delta for Budget Persistence
 
-## Purpose
-
-PostgreSQL schema and migrations backing the budget API, including the
-derived-balance invariant carried over from the localStorage model.
-
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Relational Schema
 
@@ -45,25 +40,6 @@ any table; `category_budgets`' composite key was `month_key` +
 - WHEN profile B inserts a `category_budgets` row for the same `month_key: "2026-01"` but its own category `cat_b`
 - THEN the insert succeeds because the composite key includes `profile_id`
 
-### Requirement: Derived-Balance Invariant
-
-The schema MUST NOT contain persisted columns for spent or remaining
-amounts. Spent and remaining values SHALL always be computed at read
-time from `category_budgets` and `transactions` rows.
-
-#### Scenario: Schema has no spent/remaining columns
-
-- GIVEN the full database schema after migrations
-- WHEN the schema is inspected
-- THEN no table contains a `spent` or `remaining` column
-
-#### Scenario: Spent amount reflects current transactions
-
-- GIVEN a category has a budget of 200 and two transactions of 30 and 20 in the same month
-- WHEN the month's totals are computed
-- THEN spent for that category is 50 and remaining is 150
-- AND this value exists only as a query result, never as a stored column
-
 ### Requirement: Foreign Key Integrity
 
 `categories.profile_id`, `months.profile_id`, `category_budgets.profile_id`,
@@ -100,6 +76,8 @@ covered; no profile scoping or same-profile constraint existed.)
 - GIVEN a profile has categories or transactions
 - WHEN a hard delete of that profile is attempted
 - THEN the database rejects the operation via foreign key constraint; archiving is required instead
+
+## ADDED Requirements
 
 ### Requirement: Backfill Migration Preserves All Existing Data
 

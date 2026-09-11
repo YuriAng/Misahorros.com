@@ -1,53 +1,6 @@
-# Budget API Specification
+# Delta for Budget API
 
-## Purpose
-
-REST contract exposed by the Express server for settings, categories,
-months, budgets, and transactions, replacing the localStorage boundary.
-
-## ADDED Requirements
-
-### Requirement: Side-Effect-Free Reads
-
-GET endpoints MUST NOT create, mutate, or delete any record as a side
-effect of serving a read. A month, category, or budget row MUST exist
-only as a result of an explicit write operation (POST/PUT/PATCH), never
-because it was queried.
-
-#### Scenario: Reading a month with no data yet
-
-- GIVEN no transactions, budgets, or month record exist for `2026-03`
-- WHEN a client sends `GET /api/months/2026-03`
-- THEN the response returns zero-valued totals (income 0, spent 0 per category, remaining equal to budget)
-- AND no `months` row is created in the database
-
-#### Scenario: Repeated reads stay idempotent
-
-- GIVEN a month has been read via `GET /api/months/2026-03` once
-- WHEN the same endpoint is requested again
-- THEN the response is identical
-- AND the database row count for `months` is unchanged between the two requests
-
-### Requirement: Transaction Month Derived From Date
-
-A transaction's month bucket MUST be computed from the transaction's own
-`date` field at write time, never from a client-supplied "active month"
-or any other out-of-band state.
-
-#### Scenario: Adding a transaction while viewing a different month
-
-- GIVEN the client's UI is currently displaying month `2026-08`
-- WHEN the client sends `POST /api/transactions` with `date: "2026-05-15"`
-- THEN the server stores the transaction with `month_key: "2026-05"`
-- AND `GET /api/months/2026-05` includes the transaction in its totals
-- AND `GET /api/months/2026-08` does not include it
-
-#### Scenario: Editing a transaction's date moves it between months
-
-- GIVEN a transaction exists with `date: "2026-05-15"` under month `2026-05`
-- WHEN the client sends `PUT /api/transactions/{id}` with `date: "2026-06-01"`
-- THEN the transaction's `month_key` is updated to `2026-06`
-- AND it no longer appears in `GET /api/months/2026-05` totals
+## MODIFIED Requirements
 
 ### Requirement: Response Shapes
 
@@ -104,6 +57,8 @@ identically so cross-profile existence is never leaked.
 - GIVEN category `cat_x` belongs to a profile other than the active one
 - WHEN a client sends `POST /api/transactions` with `categoryId: "cat_x"`
 - THEN the server responds `400` identifying `categoryId` as invalid, indistinguishable from a non-existent category
+
+## ADDED Requirements
 
 ### Requirement: All Reads and Writes Scoped by Active Profile
 
