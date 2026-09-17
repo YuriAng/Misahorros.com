@@ -61,6 +61,14 @@ body {
 .profile-nav select {
   flex: 1;
   min-width: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .month-nav span {

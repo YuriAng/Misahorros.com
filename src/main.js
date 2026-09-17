@@ -120,7 +120,7 @@ document.getElementById('profileSelect').addEventListener('change', withBusy(
 function openProfileFormFor(profile) {
   document.getElementById('profileForm').reset();
   if (profile) {
-    document.getElementById('profileFormTitle').textContent = 'Presupuesto activo';
+    document.getElementById('profileFormTitle').textContent = 'Editar presupuesto activo';
     document.getElementById('profileId').value = profile.id;
     document.getElementById('profileName').value = profile.name;
     document.getElementById('deleteProfileBtn').hidden = false;
