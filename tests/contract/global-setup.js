@@ -1,20 +1,8 @@
 // Vitest `globalSetup`: spins up an ephemeral Postgres container (Docker),
 // migrates it, and points every test worker at it via `DATABASE_URL`.
 //
-// Why globalSetup and not a per-file beforeAll: Vitest runs globalSetup once
-// in the main process BEFORE spawning the workers/forks that actually run
-// test files. Node copies `process.env` into a new worker/child process at
-// creation time, so setting `process.env.DATABASE_URL` here — synchronously,
-// before this function returns — is exactly what every contract test file's
-// own `server/db.js` import (via `knexfile.js`) picks up. No IPC needed.
-//
-// Design choice (documented per the task brief): tests ASSUME a disposable
-// Postgres for the `vitest` run itself rather than requiring a manually
-// started one, because `npm test` must be runnable by a fresh clone with
-// only Docker installed — matching this repo's Docker-first deployment
-// story (design.md "Self-Hosted Deployment"). An already-running test
-// database remains supported: set `DATABASE_URL` yourself before `npm test`
-// and this file skips Docker entirely, only running migrations against it.
+// It runs before workers so each receives DATABASE_URL; an existing URL is
+// migrated without Docker lifecycle management.
 import { execSync, spawnSync } from 'node:child_process';
 
 const CONTAINER_NAME = `budget-pwa-test-pg-${process.pid}-${Date.now()}`;
@@ -95,25 +83,28 @@ async function waitForPostgresReady(timeoutMs = 30000) {
   }
 }
 
-// The official `postgres` image performs an internal restart during first
-// boot (initdb, then a brief shutdown/restart to apply server config).
-// `pg_isready` can report success during that first, short-lived startup
-// window, right before the restart drops the connection — so a real TCP
-// connect-and-query retry loop is required in addition to `pg_isready`.
+// PostgreSQL can restart immediately after `pg_isready`, so require two probes.
+export function hasStableConnection(successfulProbes) {
+  return successfulProbes >= 2;
+}
+
 async function waitForRealConnection(timeoutMs = 30000) {
   const { default: knexLib } = await import('knex');
   const { default: knexConfig } = await import('../../knexfile.js');
   const start = Date.now();
   let lastError;
+  let successfulProbes = 0;
   // eslint-disable-next-line no-constant-condition
   while (Date.now() - start < timeoutMs) {
     const probe = knexLib(knexConfig);
     try {
       await probe.raw('select 1');
       await probe.destroy();
-      return;
+      if (hasStableConnection(++successfulProbes)) return;
+      await sleep(400);
     } catch (err) {
       lastError = err;
+      successfulProbes = 0;
       await probe.destroy().catch(() => {});
       await sleep(400);
     }
