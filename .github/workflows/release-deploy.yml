@@ -1,0 +1,47 @@
+name: Release deployment
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: release-${{ github.event.release.tag_name }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 1
+      - name: Build immutable release bundle
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          tag=${RELEASE_TAG:?release tag is required}
+          [[ "$tag" =~ ^v[0-9][0-9A-Za-z.-]*$ ]]
+          tar -czf "release-${tag}.tar.gz" \
+            index.html Dockerfile docker-compose.yml docker-entrypoint.sh \
+            package.json package-lock.json knexfile.js \
+            deploy/release-deploy.sh deploy/install-host.sh deploy/Caddyfile \
+            server src
+          sha256sum "release-${tag}.tar.gz" > manifest.sha256
+      - uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - name: Transfer and deploy the exact published tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          tag=${RELEASE_TAG:?release tag is required}
+          scp -o StrictHostKeyChecking=yes "release-${tag}.tar.gz" manifest.sha256 ubuntu@${{ vars.TAILSCALE_HOST }}:/opt/misahorros.com/staging/
+          ssh -o StrictHostKeyChecking=yes ubuntu@${{ vars.TAILSCALE_HOST }} "sudo /usr/local/sbin/misahorros-deploy deploy '$tag' /opt/misahorros.com/staging/release-${tag}.tar.gz /opt/misahorros.com/staging/manifest.sha256"
