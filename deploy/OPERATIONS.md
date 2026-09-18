@@ -9,7 +9,16 @@ host-owned and must never be placed in a release bundle.
 
 Configure Tailscale ACL/SSH for `tag:ci` to `tag:server` only as `ubuntu`.
 Configure GitHub's protected `production` environment with `TS_OAUTH_CLIENT_ID`,
-`TS_OAUTH_SECRET`, and `TAILSCALE_HOST`; no long-lived SSH key is permitted.
+`TS_OAUTH_SECRET`, `TAILSCALE_HOST`, and `DEPLOY_SSH_KNOWN_HOSTS`; no long-lived
+SSH key is permitted.
+
+`DEPLOY_SSH_KNOWN_HOSTS` contains the complete trusted `known_hosts` entry or
+entries for the deployment host. Obtain each host public key through a trusted,
+out-of-band verification channel before adding it to the protected environment.
+Verify the fingerprint with the infrastructure maintainer or an independently
+trusted record; do not discover or refresh keys from CI with `ssh-keyscan`.
+Review and replace the secret only after the same out-of-band verification when
+the host key is intentionally rotated.
 
 For the initial empty PostgreSQL volume only, verify the supplied dump checksum
 and run `misahorros-host-bootstrap <dump> <sha256> <compose-file>` as root. The

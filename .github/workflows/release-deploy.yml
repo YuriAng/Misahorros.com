@@ -37,6 +37,15 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
+      - name: Configure SSH host verification
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_SSH_KNOWN_HOSTS:?GitHub production secret is required}"
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/known_hosts"
       - name: Transfer and deploy the exact published tag
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
