@@ -50,6 +50,23 @@ describe('release deployment host boundary', () => {
     expect(workflow).not.toContain("tag='${{ github.event.release.tag_name }}'");
   });
 
+  it('materializes protected known hosts after Tailscale before SSH transport', () => {
+    const workflow = readFileSync(resolve(project, '.github/workflows/release-deploy.yml'), 'utf8');
+    const tailscale = workflow.indexOf('uses: tailscale/github-action@v4');
+    const knownHosts = workflow.indexOf('DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}');
+    const transport = workflow.indexOf('scp -o StrictHostKeyChecking=yes');
+
+    expect(knownHosts).toBeGreaterThan(tailscale);
+    expect(knownHosts).toBeLessThan(transport);
+    expect(workflow).toContain('environment: production');
+    expect(workflow).toContain('install -d -m 0700 "$HOME/.ssh"');
+    expect(workflow).toContain('> "$HOME/.ssh/known_hosts"');
+    expect(workflow).toContain('chmod 0600 "$HOME/.ssh/known_hosts"');
+    expect(workflow).toContain('scp -o StrictHostKeyChecking=yes');
+    expect(workflow).toContain('ssh -o StrictHostKeyChecking=yes');
+    expect(workflow).not.toContain('ssh-keyscan');
+  });
+
   it('uses one stable Compose project and named PostgreSQL volume', () => {
     expect(readFileSync(resolve(project, 'docker-compose.yml'), 'utf8')).toContain('name: misahorros-pgdata');
     expect(readFileSync(resolve(project, 'deploy/release-deploy.sh'), 'utf8')).toContain('docker compose -p misahorros');
