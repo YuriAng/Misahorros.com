@@ -67,18 +67,21 @@ set -a; source "$root/shared/production.env"; set +a
 : "${POSTGRES_DB:?POSTGRES_DB is required}"; : "${POSTGRES_USER:?POSTGRES_USER is required}"
 if [[ -z "$previous" && ! -f "$root/bootstrap/restore-complete.json" ]]; then echo 'bootstrap marker is required for the first release' >&2; exit 70; fi
 atomic_record "{\"tag\":\"$tag\",\"manifestSha256\":\"$actual\",\"status\":\"in_progress\",\"attemptId\":\"$attempt_id\",\"previousTag\":\"${previous:-null}\",\"previousConfigSha256\":\"$config_sha\",\"startedAt\":\"$started\",\"finishedAt\":null,\"durationMs\":null,\"backupId\":null,\"backupSha256\":null,\"failureReason\":null,\"rollback_reason\":null,\"rollback_failure_reason\":null,\"rollback\":null}"
-backup=''; backup_sha=''
+backup=''; backup_sha=''; pre_rows=''
 if [[ -n "$previous" ]]; then
   atomic_record "{\"tag\":\"$tag\",\"manifestSha256\":\"$actual\",\"status\":\"in_progress\",\"attemptId\":\"$attempt_id\",\"previousTag\":\"$previous\",\"previousConfigSha256\":\"$config_sha\",\"startedAt\":\"$started\",\"finishedAt\":null,\"durationMs\":null,\"backupId\":null,\"backupSha256\":null,\"failureReason\":null,\"rollback_reason\":null,\"rollback_failure_reason\":null,\"rollback\":null}"
   docker compose -p "$compose_project" -f "$previous/docker-compose.yml" exec -T postgres pg_isready || { echo 'postgres unavailable before backup' >&2; exit 70; }
   backup="$root/backups/$tag-$attempt_id.dump"; docker compose -p "$compose_project" -f "$previous/docker-compose.yml" exec -T postgres pg_dump --format=custom --compress=9 -U "$POSTGRES_USER" -d "$POSTGRES_DB" >"$backup"
   pg_restore --list "$backup" >/dev/null; backup_sha=$(sha256sum "$backup" | awk '{print $1}')
+  row_query="SELECT COALESCE(SUM((xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', schemaname, tablename), false, true, '')))[1]::text::bigint),0) AS row_total FROM pg_tables WHERE schemaname='public' AND tablename NOT LIKE 'knex\\_%'"
+  pre_rows=$(docker compose -p "$compose_project" -f "$previous/docker-compose.yml" exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "$row_query") || pre_rows=''
+  [[ "$pre_rows" =~ ^[0-9]+$ ]] || { echo 'pre-deploy row count unreadable; refusing to stop the running stack' >&2; exit 70; }
   docker compose -p "$compose_project" -f "$previous/docker-compose.yml" down
 fi
 backup_id=${backup:+$(basename "$backup")}
 [[ "$(sha256sum "$handoff" | awk '{print $1}')" == "$actual" ]] || { echo 'bundle changed during handoff' >&2; exit 65; }
 release="$root/releases/$tag"; mkdir -p "$release"; tar -xzf "$handoff" -C "$release"
-if DEPLOY_ATTEMPT_ID="$attempt_id" RELEASE_BUNDLE="$handoff" PUBLIC_HOST="misahorros.guarotech.com" "$release/deploy/release-deploy.sh" "$release" "$tag"; then
+if DEPLOY_ATTEMPT_ID="$attempt_id" PRE_DEPLOY_ROWS="$pre_rows" RELEASE_BUNDLE="$handoff" PUBLIC_HOST="misahorros.guarotech.com" "$release/deploy/release-deploy.sh" "$release" "$tag"; then
   if compgen -G "$root/backups/*.dump" >/dev/null; then ls -1t "$root/backups"/*.dump | tail -n +8 | xargs -r rm -f; fi
   finished=$(now); atomic_record "{\"tag\":\"$tag\",\"manifestSha256\":\"$actual\",\"status\":\"succeeded\",\"attemptId\":\"$attempt_id\",\"previousTag\":\"$previous\",\"previousConfigSha256\":\"$config_sha\",\"backupId\":\"$(basename "$backup")\",\"backupSha256\":\"$backup_sha\",\"health\":\"complete\",\"startedAt\":\"$started\",\"finishedAt\":\"$finished\",\"durationMs\":$(duration),\"failureReason\":null,\"rollback_reason\":null,\"rollback_failure_reason\":null}"
 else
