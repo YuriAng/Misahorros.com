@@ -36,4 +36,4 @@ services:
 
 volumes:
   pgdata:
-    name: misahorros-pgdata
+    name: budget-pwa_pgdata

@@ -8,9 +8,11 @@ import db from '../db.js';
 import { asyncHandler } from '../asyncHandler.js';
 import { badRequest, notFound } from '../errors.js';
 import { generateId } from '../utils.js';
-import { materializeMonth, monthKeyFromDate } from '../services/months.js';
+import { materializeMonth, monthKeyFromDate, startOfDayInTz } from '../services/months.js';
 
 const router = Router();
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function serializeTransaction(row) {
   return {
@@ -23,8 +25,12 @@ function serializeTransaction(row) {
   };
 }
 
+// A bare "YYYY-MM-DD" (from the `<input type="date">` on the expense form)
+// is parsed as midnight in the app's timezone, not UTC — otherwise it drifts
+// to the previous day once read back under a UTC-behind timezone.
 function parseDate(date) {
-  const d = date ? new Date(date) : new Date();
+  if (!date) return new Date();
+  const d = DATE_ONLY_RE.test(date) ? startOfDayInTz(date) : new Date(date);
   if (Number.isNaN(d.getTime())) {
     throw badRequest('date is invalid', 'date');
   }

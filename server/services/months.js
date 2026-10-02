@@ -29,6 +29,38 @@ export function monthKeyFromDate(date, tz = process.env.APP_TZ || DEFAULT_TZ) {
 }
 
 /**
+ * Converts a bare "YYYY-MM-DD" (no time-of-day) into the UTC instant for
+ * midnight of that calendar day in `tz`. A date-only string parsed with the
+ * native `Date` constructor is always UTC midnight (ECMA-262), which drifts
+ * to the previous day once read back in a timezone behind UTC — e.g. a user
+ * picking "2026-10-17" in an `America/Caracas` (UTC-4) app would otherwise
+ * see it stored, and later displayed, as the 16th.
+ *
+ * @param {string} dateOnly "YYYY-MM-DD"
+ * @param {string} [tz] defaults to `APP_TZ` env var, then `America/Caracas`
+ * @returns {Date}
+ */
+export function startOfDayInTz(dateOnly, tz = process.env.APP_TZ || DEFAULT_TZ) {
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  const utcGuess = Date.UTC(year, month - 1, day);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(utcGuess);
+  const get = (type) => Number(parts.find((p) => p.type === type).value);
+  const hour = get('hour') % 24; // Intl can report midnight as "24"
+  const asUtcIfGuessWereLocal = Date.UTC(get('year'), get('month') - 1, get('day'), hour, get('minute'), get('second'));
+  const offsetMs = asUtcIfGuessWereLocal - utcGuess;
+  return new Date(utcGuess - offsetMs);
+}
+
+/**
  * Ensures a `months` row exists for `(profileId, monthKey)`, creating it
  * only if missing. MUST be called with the same transaction as the write
  * that needs it — never from a GET path (design.md: "reads never create
