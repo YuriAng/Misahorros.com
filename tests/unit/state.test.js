@@ -146,7 +146,9 @@ describe('setActiveProfile', () => {
         monthKey: MONTH_KEY,
         income: { amount: 500, updatedAt: '2026-01-01T00:00:00.000Z' },
         budgets: {},
-        transactions: []
+        transactions: [],
+        materialized: true,
+        carryForward: { available: false, sourceMonth: null }
       }
     });
 
@@ -163,7 +165,9 @@ describe('setActiveProfile', () => {
     expect(getData().months[MONTH_KEY]).toEqual({
       income: { amount: 500, updatedAt: '2026-01-01T00:00:00.000Z' },
       budgets: {},
-      transactions: []
+      transactions: [],
+      materialized: true,
+      carryForward: { available: false, sourceMonth: null }
     });
   });
 });

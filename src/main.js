@@ -13,7 +13,8 @@ import {
   bootstrap, getData, getActiveMonth, setActiveMonth,
   setIncome, addCategory, updateCategory, archiveCategory,
   addTransaction, updateTransaction, deleteTransaction, getCategoryBudget,
-  getActiveProfile, addProfile, renameProfile, archiveProfile, setActiveProfile
+  getActiveProfile, addProfile, renameProfile, archiveProfile, setActiveProfile,
+  applyCarryForward
 } from './state.js';
 import { ApiError, getImportStatus, importLegacy } from './api.js';
 import { loadData, STORAGE_KEY } from './storage.js';
@@ -172,11 +173,19 @@ document.getElementById('deleteProfileBtn').addEventListener('click', () => {
 // --- Ingreso mensual ---
 
 document.getElementById('summaryCard').addEventListener('click', (e) => {
-  if (e.target.id !== 'editIncomeBtn') return;
-  const monthKey = getActiveMonth();
-  const month = getData().months[monthKey];
-  document.getElementById('incomeAmount').value = month?.income.amount || 0;
-  openOverlay('incomeFormOverlay');
+  if (e.target.id === 'editIncomeBtn') {
+    const monthKey = getActiveMonth();
+    const month = getData().months[monthKey];
+    document.getElementById('incomeAmount').value = month?.income.amount || 0;
+    openOverlay('incomeFormOverlay');
+    return;
+  }
+  if (e.target.id === 'carryForwardBtn') {
+    withBusy(
+      () => document.getElementById('carryForwardBtn'),
+      async () => { await applyCarryForward(getActiveMonth()); }
+    )();
+  }
 });
 
 document.getElementById('incomeForm').addEventListener('submit', withBusy(

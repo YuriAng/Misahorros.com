@@ -3,7 +3,7 @@
 import {
   getData, getActiveMonth, getActiveCategories,
   getCategorySpent, getCategoryBudget, getCategoryRemaining, getMonthTotals,
-  getProfiles
+  getProfiles, getCarryForwardInfo
 } from './state.js';
 import { formatCurrency, formatMonthLabel } from './utils.js';
 
@@ -44,8 +44,20 @@ function renderSummary() {
   const currency = getData().settings.currency;
   const pctUsed = income > 0 ? Math.min((totalSpent / income) * 100, 100) : (totalSpent > 0 ? 100 : 0);
   const status = budgetStatus(totalSpent, income);
+  const carryForward = getCarryForwardInfo(monthKey);
+
+  const carryForwardBanner = carryForward.available ? `
+    <div class="summary-row carry-forward-banner">
+      <div>
+        <span class="summary-label">¿Copiar datos de ${formatMonthLabel(carryForward.sourceMonth)}?</span>
+        <div class="summary-meta">Trae el ingreso y los presupuestos por categoría; luego puedes editarlos.</div>
+      </div>
+      <button class="btn-link" id="carryForwardBtn">Copiar</button>
+    </div>
+  ` : '';
 
   document.getElementById('summaryCard').innerHTML = `
+    ${carryForwardBanner}
     <div class="summary-row">
       <div>
         <span class="summary-label">Ingreso mensual</span>

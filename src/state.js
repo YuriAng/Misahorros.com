@@ -20,7 +20,9 @@ let cache = defaultData();
 const EMPTY_MONTH = Object.freeze({
   income: Object.freeze({ amount: 0, updatedAt: null }),
   budgets: Object.freeze({}),
-  transactions: Object.freeze([])
+  transactions: Object.freeze([]),
+  materialized: false,
+  carryForward: Object.freeze({ available: false, sourceMonth: null })
 });
 
 function readMonth(monthKey) {
@@ -36,7 +38,9 @@ function ensureCacheMonth(monthKey) {
     cache.months[monthKey] = {
       income: { amount: 0, updatedAt: null },
       budgets: {},
-      transactions: []
+      transactions: [],
+      materialized: false,
+      carryForward: { available: false, sourceMonth: null }
     };
   }
   return cache.months[monthKey];
@@ -46,7 +50,9 @@ function monthFromPayload(payload) {
   return {
     income: { ...payload.income },
     budgets: { ...payload.budgets },
-    transactions: payload.transactions.map(t => ({ ...t }))
+    transactions: payload.transactions.map(t => ({ ...t })),
+    materialized: payload.materialized,
+    carryForward: { ...payload.carryForward }
   };
 }
 
@@ -95,6 +101,22 @@ export async function setIncome(monthKey, amount) {
   const result = await api.putIncome(monthKey, amount);
   const month = ensureCacheMonth(monthKey);
   month.income = { amount: result.amount, updatedAt: result.updatedAt };
+}
+
+// Expone si el mes activo puede copiar ingreso y presupuestos del mes
+// anterior (solo cuando el mes aún no fue materializado — ver
+// server/services/months.js:getMonthPayload, campo `carryForward`).
+export function getCarryForwardInfo(monthKey) {
+  return readMonth(monthKey).carryForward;
+}
+
+// Copia ingreso y presupuestos del mes anterior hacia `monthKey` (server-side,
+// vía POST /months/:monthKey/carry-forward) y refresca el cache con el
+// resultado completo, para que quede editable igual que cualquier otro mes.
+export async function applyCarryForward(monthKey) {
+  await api.carryForward(monthKey);
+  const monthPayload = await api.getMonth(monthKey);
+  cache.months[monthKey] = monthFromPayload(monthPayload);
 }
 
 export async function addCategory({ name, icon, color, budget }) {
