@@ -145,6 +145,33 @@ export function setActiveProfile(id) {
   return request('/profiles/active', { method: 'PUT', body: { profileId: id } });
 }
 
+// --- funds ---
+
+export function getFunds() {
+  return request('/funds');
+}
+
+export function createFund(payload) {
+  return request('/funds', { method: 'POST', body: payload });
+}
+
+export function renameFund(id, name) {
+  return request(`/funds/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name } });
+}
+
+export function archiveFund(id) {
+  return request(`/funds/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function getFundMovements(id, { limit } = {}) {
+  const qs = limit ? `?limit=${encodeURIComponent(limit)}` : '';
+  return request(`/funds/${encodeURIComponent(id)}/movements${qs}`);
+}
+
+export function createFundMovement(id, body) {
+  return request(`/funds/${encodeURIComponent(id)}/movements`, { method: 'POST', body });
+}
+
 // --- legacy import ---
 
 export function getImportStatus() {

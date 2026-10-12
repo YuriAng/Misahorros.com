@@ -93,6 +93,7 @@ describe('server/client balance parity', () => {
       income: { ...server.body.income },
       budgets: { ...server.body.budgets },
       transactions: server.body.transactions.map((t) => ({ ...t })),
+      fundMovements: server.body.fundMovements.map((m) => ({ ...m })),
     };
 
     for (const categoryId of [catA.id, catB.id, catC.id]) {
@@ -108,19 +109,16 @@ describe('server/client balance parity', () => {
     expect(server.body.categoryTotals[catB.id].remaining).toBe(-300);
     expect(getCategoryRemaining(MONTH_KEY, catB.id)).toBe(-300);
 
-    // src/state.js:getMonthTotals() does not yet read fund terms — that is
-    // PR 4 of 5's scope, explicitly out of bounds here. The server's
-    // revised totalAvailable formula (income - totalSpent - fundDeposits +
-    // fundWithdrawals) is pinned directly against the gross terms above
-    // instead of coupling this server-only PR to unmodified client code.
-    const { fundDeposits, fundWithdrawals, totalAvailable, ...totalsWithoutFundTerms } = server.body.totals;
-    expect(totalAvailable).toBe(
-      totalsWithoutFundTerms.income - totalsWithoutFundTerms.totalSpent - fundDeposits + fundWithdrawals
+    // src/state.js:getMonthTotals() now reads fund terms too (PR 4 of 5) —
+    // full-object parity, including totalAvailable's revised formula,
+    // holds without stripping any field.
+    expect(server.body.totals.totalAvailable).toBe(
+      server.body.totals.income -
+        server.body.totals.totalSpent -
+        server.body.totals.fundDeposits +
+        server.body.totals.fundWithdrawals
     );
-    expect(getMonthTotals(MONTH_KEY)).toEqual({
-      ...totalsWithoutFundTerms,
-      totalAvailable: totalsWithoutFundTerms.income - totalsWithoutFundTerms.totalSpent,
-    });
+    expect(getMonthTotals(MONTH_KEY)).toEqual(server.body.totals);
   });
 
   it('parity holds for an untouched month too: both sides agree on all-zero totals', async () => {
@@ -137,14 +135,13 @@ describe('server/client balance parity', () => {
     expect(getCategoryBudget('2026-09', category.id)).toBe(0);
     expect(getCategorySpent('2026-09', category.id)).toBe(0);
     expect(getCategoryRemaining('2026-09', category.id)).toBe(0);
-    // No fund movements in this fixture, so fundDeposits/fundWithdrawals
-    // are 0 and totalAvailable is unaffected — but the client (PR 4 scope)
-    // does not have those two keys at all yet, so they are stripped before
-    // the structural comparison.
-    const { fundDeposits, fundWithdrawals, ...totalsWithoutFundTerms } = server.body.totals;
-    expect(fundDeposits).toBe(0);
-    expect(fundWithdrawals).toBe(0);
-    expect(getMonthTotals('2026-09')).toEqual(totalsWithoutFundTerms);
+    // No fund movements in this fixture, and `fundMovements` is
+    // deliberately NOT set on the client's month cache below — this pins
+    // getMonthTotals()'s defensive `|| []` fallback for a stale/older-shape
+    // cached month against a real server fixture, not just a unit literal.
+    expect(server.body.totals.fundDeposits).toBe(0);
+    expect(server.body.totals.fundWithdrawals).toBe(0);
+    expect(getMonthTotals('2026-09')).toEqual(server.body.totals);
   });
 
   it('parity holds independently for a second, non-default profile (task 7.1/7.2)', async () => {
@@ -197,12 +194,11 @@ describe('server/client balance parity', () => {
     expect(server.body.categoryTotals[catB2.id]).toEqual({ budget: 0, spent: 60, remaining: -60 });
     expect(getCategoryRemaining(MONTH_KEY, catB2.id)).toBe(-60);
 
-    // No fund movements in profile B's fixture — see the "untouched month"
-    // test above for why fundDeposits/fundWithdrawals must be stripped
-    // before comparing against the client, which does not have them yet.
-    const { fundDeposits, fundWithdrawals, ...totalsWithoutFundTerms } = server.body.totals;
-    expect(fundDeposits).toBe(0);
-    expect(fundWithdrawals).toBe(0);
-    expect(getMonthTotals(MONTH_KEY)).toEqual(totalsWithoutFundTerms);
+    // No fund movements in profile B's fixture — same defensive-fallback
+    // shape as the "untouched month" test above (`fundMovements` left
+    // unset on the client's cached month).
+    expect(server.body.totals.fundDeposits).toBe(0);
+    expect(server.body.totals.fundWithdrawals).toBe(0);
+    expect(getMonthTotals(MONTH_KEY)).toEqual(server.body.totals);
   });
 });

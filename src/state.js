@@ -21,6 +21,7 @@ const EMPTY_MONTH = Object.freeze({
   income: Object.freeze({ amount: 0, updatedAt: null }),
   budgets: Object.freeze({}),
   transactions: Object.freeze([]),
+  fundMovements: Object.freeze([]),
   materialized: false,
   carryForward: Object.freeze({ available: false, sourceMonth: null })
 });
@@ -39,6 +40,7 @@ function ensureCacheMonth(monthKey) {
       income: { amount: 0, updatedAt: null },
       budgets: {},
       transactions: [],
+      fundMovements: [],
       materialized: false,
       carryForward: { available: false, sourceMonth: null }
     };
@@ -51,6 +53,7 @@ function monthFromPayload(payload) {
     income: { ...payload.income },
     budgets: { ...payload.budgets },
     transactions: payload.transactions.map(t => ({ ...t })),
+    fundMovements: (payload.fundMovements || []).map(m => ({ ...m })),
     materialized: payload.materialized,
     carryForward: { ...payload.carryForward }
   };
@@ -63,6 +66,7 @@ export async function bootstrap() {
   cache.settings = { ...initial.settings };
   cache.categories = initial.categories.map(c => ({ ...c }));
   cache.profiles = initial.profiles.map(p => ({ ...p }));
+  cache.funds = initial.funds.map(f => ({ ...f }));
 
   // Primera vez que corre la app contra este servidor: no hay mes activo
   // todavía. Se fija al mes actual localmente y se persiste, igual que el
@@ -198,6 +202,11 @@ export async function setActiveProfile(profileId) {
   cache.settings = { ...payload.settings };
   cache.profiles = payload.profiles.map(p => ({ ...p }));
   cache.categories = payload.categories.map(c => ({ ...c }));
+  // CRITICAL CACHE-LEAK FIX: cache.funds is a flat array, replaced
+  // wholesale exactly like cache.categories/cache.profiles above — never a
+  // merge — so a fund (and its balance) from the profile just left behind
+  // is unrepresentable afterward, same guarantee as cache.months below.
+  cache.funds = payload.funds.map(f => ({ ...f }));
   cache.months = {};
   if (payload.month) cache.months[payload.month.monthKey] = monthFromPayload(payload.month);
 }
@@ -254,6 +263,67 @@ export async function deleteTransaction(monthKey, txnId) {
   }
 }
 
+// --- Fondos de ahorro/inversión ---
+
+export function getFunds() {
+  return cache.funds.filter(f => !f.archived);
+}
+
+// El saldo lo DERIVA el servidor (todo el histórico), porque el cache del
+// cliente es por mes y no puede sumar meses que nunca cargó. No se
+// almacena en ninguna columna: se recalcula en cada lectura, server-side.
+export function getFundBalance(fundId) {
+  const fund = cache.funds.find(f => f.id === fundId);
+  return fund ? fund.balance : 0;
+}
+
+// Movimientos del mes dado para un fondo dado, para pintar la tarjeta.
+export function getFundMonthMovements(monthKey, fundId) {
+  return readMonth(monthKey).fundMovements.filter(m => m.fundId === fundId);
+}
+
+export async function addFund(name) {
+  const created = await api.createFund({ name });
+  cache.funds.push(created);
+  return created;
+}
+
+export async function renameFund(id, name) {
+  const updated = await api.renameFund(id, name);
+  const idx = cache.funds.findIndex(f => f.id === id);
+  if (idx !== -1) cache.funds[idx] = updated;
+  return updated;
+}
+
+// No se borra físicamente: se archiva. El servidor RECHAZA (409
+// fund_has_balance) archivar un fondo con saldo — ese dinero existe y no se
+// arrastra al mes siguiente, así que quedaría invisible para siempre.
+export async function archiveFund(id) {
+  await api.archiveFund(id);
+  const idx = cache.funds.findIndex(f => f.id === id);
+  if (idx !== -1) cache.funds[idx] = { ...cache.funds[idx], archived: true };
+}
+
+// `monthKey` NO se envía: el servidor deriva el mes real del `date` del
+// movimiento (Bug Fix B), igual que addTransaction. Por eso el movimiento
+// puede caer en un mes distinto del que se ve en pantalla, y es al mes
+// devuelto (`movement.monthKey`) al que se agrega en el cache.
+export async function addFundMovement(fundId, { type, amount, note, date }) {
+  const { movement, balance } = await api.createFundMovement(fundId, { type, amount, note, date });
+  const idx = cache.funds.findIndex(f => f.id === fundId);
+  if (idx !== -1) cache.funds[idx] = { ...cache.funds[idx], balance };
+  const month = ensureCacheMonth(movement.monthKey);
+  month.fundMovements.unshift({
+    id: movement.id,
+    fundId: movement.fundId,
+    type: movement.type,
+    amount: movement.amount,
+    note: movement.note,
+    date: movement.date
+  });
+  return movement;
+}
+
 // --- Cálculos derivados ---
 // Cuerpos EXACTAMENTE iguales a la versión anterior a esta migración, con
 // el único cambio de `ensureMonth` -> `readMonth`: siguen siendo funciones
@@ -281,10 +351,31 @@ export function getMonthTotals(monthKey) {
   const income = month.income.amount;
   const totalBudgeted = Object.values(month.budgets).reduce((sum, v) => sum + v, 0);
   const totalSpent = month.transactions.reduce((sum, t) => sum + t.amount, 0);
+
+  // `|| []` protege a un mes cacheado por una versión anterior del
+  // cliente: una función pura de lectura nunca debe lanzar. Mismo reduce
+  // que server/services/months.js:getMonthPayload() sobre las MISMAS
+  // filas, para que la paridad sea estructural y no una coincidencia que
+  // un test atrape (design.md "one row query reduced in JS, not a second
+  // SQL aggregate").
+  const movements = month.fundMovements || [];
+  let fundDeposits = 0;
+  let fundWithdrawals = 0;
+  for (const movement of movements) {
+    if (movement.type === 'deposit') fundDeposits += movement.amount;
+    else fundWithdrawals += movement.amount;
+  }
+
   return {
     income,
     totalBudgeted,
     totalSpent,
-    totalAvailable: income - totalSpent
+    fundDeposits,
+    fundWithdrawals,
+    // Un depósito mueve dinero FUERA de lo disponible este mes; un retiro
+    // lo trae de vuelta — por eso el depósito resta y el retiro suma
+    // (design.md "Decision: totals gains two gross terms; totalAvailable
+    // keeps its name").
+    totalAvailable: income - totalSpent - fundDeposits + fundWithdrawals
   };
 }

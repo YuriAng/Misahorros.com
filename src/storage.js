@@ -18,7 +18,8 @@ export function defaultData() {
     },
     categories: [],
     months: {},
-    profiles: []
+    profiles: [],
+    funds: [] // lo llena el servidor en bootstrap(); `balance` viene derivado
   };
 }
 
