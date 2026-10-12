@@ -32,12 +32,12 @@ Chain strategy: stacked-to-main
 
 Implement `server/migrations/003_savings_investment_funds.js` with two tables (`funds` and `fund_movements`), composite FKs, and constraints. Update `tests/contract/invariant.test.js` to expect the new tables and forbid balance columns. This phase must complete first — all downstream tasks depend on the schema.
 
-- [ ] 1.1 Write RED test: `tests/contract/invariant.test.js` — add `balance`, `fund_balance`, `total_deposited`, `total_withdrawn` to `FORBIDDEN_COLUMN_NAMES` array; update pinned table list `toEqual` to include `fund_movements` and `funds` (8-table assertion, exact alphabetical order); **run to confirm RED**
-- [ ] 1.2 Create `server/migrations/003_savings_investment_funds.js`: `funds` table with `id` (PK), `profile_id` (FK to `budget_profiles`), `name` (non-blank check), `archived` (bool, default false), `created_at`, and `UNIQUE(profile_id, id)` composite FK target; `funds_live_name_unique` partial index on live funds only
-- [ ] 1.3 Extend `003`: `fund_movements` table with `id` (PK), `profile_id`, `fund_id`, `month_key`, `type` (TEXT check constraint for 'deposit'/'withdrawal' only), `amount` (NUMERIC, positive check), `note`, `date`, `created_at`; two composite FKs to `funds(profile_id, id)` and `months(profile_id, month_key)` with `ON DELETE RESTRICT`; two indexes per design.md
-- [ ] 1.4 Implement `down()` in migration: refuse with error message if any `fund_movements` rows exist (lossless recovery path post-deployment); drop `fund_movements` then `funds` on empty ledger
-- [ ] 1.5 GREEN: update `tests/contract/migration.test.js` — verify `003` up/down behavior (up succeeds on `002` schema, down refuses with movements present, down succeeds on empty); verify table count and schema shape post-migration
-- [ ] 1.6 GREEN: run all invariant tests; confirm forbidden columns are now correctly enforced for funds; verify pinned 8-table list passes
+- [x] 1.1 Write RED test: `tests/contract/invariant.test.js` — add `balance`, `fund_balance`, `total_deposited`, `total_withdrawn` to `FORBIDDEN_COLUMN_NAMES` array; update pinned table list `toEqual` to include `fund_movements` and `funds` (8-table assertion, exact alphabetical order); **run to confirm RED**
+- [x] 1.2 Create `server/migrations/003_savings_investment_funds.js`: `funds` table with `id` (PK), `profile_id` (FK to `budget_profiles`), `name` (non-blank check), `archived` (bool, default false), `created_at`, and `UNIQUE(profile_id, id)` composite FK target; `funds_live_name_unique` partial index on live funds only
+- [x] 1.3 Extend `003`: `fund_movements` table with `id` (PK), `profile_id`, `fund_id`, `month_key`, `type` (TEXT check constraint for 'deposit'/'withdrawal' only), `amount` (NUMERIC, positive check), `note`, `date`, `created_at`; two composite FKs to `funds(profile_id, id)` and `months(profile_id, month_key)` with `ON DELETE RESTRICT`; two indexes per design.md
+- [x] 1.4 Implement `down()` in migration: refuse with error message if any `fund_movements` rows exist (lossless recovery path post-deployment); drop `fund_movements` then `funds` on empty ledger
+- [x] 1.5 GREEN: update `tests/contract/migration.test.js` — verify `003` up/down behavior (up succeeds on `002` schema, down refuses with movements present, down succeeds on empty); verify table count and schema shape post-migration
+- [x] 1.6 GREEN: run all invariant tests; confirm forbidden columns are now correctly enforced for funds; verify pinned 8-table list passes
 
 ---
 

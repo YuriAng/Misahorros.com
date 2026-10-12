@@ -20,6 +20,29 @@ async function tableCounts() {
   return result;
 }
 
+// `003_savings_investment_funds.js` sits on top of `002`, so a plain
+// `db.migrate.down()`/`up()` now steps exactly ONE migration file, not one
+// logical schema generation. These helpers make the multi-step intent of
+// each 002-focused assertion explicit instead of silently exercising 003.
+async function stepDown(times = 1) {
+  for (let i = 0; i < times; i += 1) {
+    await db.migrate.down();
+  }
+}
+async function stepUp(times = 1) {
+  for (let i = 0; i < times; i += 1) {
+    await db.migrate.up();
+  }
+}
+
+async function fundTableNames() {
+  const { rows } = await db.raw(
+    `SELECT table_name FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name IN ('funds', 'fund_movements')`
+  );
+  return rows.map((r) => r.table_name).sort();
+}
+
 // Restores the baseline every other contract test file expects: schema at
 // latest (002 applied), every table empty, exactly one default profile, and
 // `settings.active_profile` pointing at it.
@@ -46,15 +69,11 @@ describe('server/migrations/002_budget_profiles.js', () => {
   // known-clean starting point once, up front.
   beforeAll(restoreCleanLatestState);
 
-  afterAll(async () => {
-    await restoreCleanLatestState();
-    await closeDb();
-  });
-
   it('backfills existing 001-shape data into the default profile with zero loss (task 1.1)', async () => {
     // Roll back to the 001 shape so we can seed data the way a pre-migration
     // production database would actually hold it (no profile_id anywhere).
-    await db.migrate.down();
+    // Two steps: 003 (funds) first, then 002 (profile_id) — see stepDown().
+    await stepDown(2);
 
     await db('categories').insert([
       { id: 'cat_a', name: 'Food' },
@@ -73,7 +92,9 @@ describe('server/migrations/002_budget_profiles.js', () => {
     const before = await tableCounts();
     expect(before).toEqual({ categories: 2, months: 2, category_budgets: 1, transactions: 2 });
 
-    await db.migrate.up();
+    // Single step up: this test exercises 002's backfill specifically, so it
+    // stops there — 003 is re-applied later by restoreCleanLatestState().
+    await stepUp(1);
 
     const after = await tableCounts();
     expect(after).toEqual(before);
@@ -140,6 +161,10 @@ describe('server/migrations/002_budget_profiles.js', () => {
     await db('budget_profiles').insert({ id: 'prof_other', name: 'Negocio' });
     await db('categories').insert({ id: 'cat_other', name: 'Marketing', profile_id: 'prof_other' });
 
+    // restoreCleanLatestState() above lands on latest (003 applied). Pop 003
+    // first (empty ledger, succeeds) so the NEXT down() is the one under
+    // test: 002's own refusal when a second profile owns data.
+    await stepDown(1);
     await expect(db.migrate.down()).rejects.toThrow(/non-default profile/);
 
     // Refusal must be loud AND leave the schema exactly as it was — the
@@ -155,8 +180,11 @@ describe('server/migrations/002_budget_profiles.js', () => {
   // budget-persistence spec, "Applying migrations to a fresh database".
   it('applying to a fresh (empty) database creates the default profile with zero rows to backfill', async () => {
     await restoreCleanLatestState(); // all 4 tables empty, one default profile
-    await db.migrate.down();
-    await db.migrate.up();
+    // Round-trip through BOTH migrations (003 then 002, and back) so this
+    // test still exercises 002's own fresh-database/empty-backfill scenario,
+    // and leaves the suite on latest (003 applied) afterward.
+    await stepDown(2);
+    await stepUp(2);
 
     const profiles = await db('budget_profiles');
     expect(profiles).toHaveLength(1);
@@ -169,4 +197,87 @@ describe('server/migrations/002_budget_profiles.js', () => {
     const activeProfileSetting = await db('settings').where({ key: 'active_profile' }).first();
     expect(activeProfileSetting.value).toBe(DEFAULT_PROFILE_ID);
   });
+});
+
+describe('server/migrations/003_savings_investment_funds.js', () => {
+  it('up() creates funds and fund_movements on top of the 002 schema (tasks 1.2-1.3)', async () => {
+    await restoreCleanLatestState(); // latest (003 applied), empty, one default profile
+
+    // Roll back to the 002 shape — profile_id columns present, no fund tables.
+    await stepDown(1);
+    expect(await fundTableNames()).toEqual([]);
+
+    await stepUp(1);
+
+    expect(await fundTableNames()).toEqual(['fund_movements', 'funds']);
+
+    const { rows: fundColumns } = await db.raw(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'funds'`
+    );
+    expect(fundColumns.map((r) => r.column_name).sort()).toEqual(
+      ['archived', 'created_at', 'id', 'name', 'profile_id'].sort()
+    );
+
+    const { rows: movementColumns } = await db.raw(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'fund_movements'`
+    );
+    expect(movementColumns.map((r) => r.column_name).sort()).toEqual(
+      ['amount', 'created_at', 'date', 'fund_id', 'id', 'month_key', 'note', 'profile_id', 'type'].sort()
+    );
+  });
+
+  it('down() refuses once a fund movement exists, leaving both tables intact (task 1.4)', async () => {
+    await restoreCleanLatestState();
+
+    await db('months').insert({ profile_id: DEFAULT_PROFILE_ID, month_key: '2026-01', income_amount: 1000 });
+    await db('funds').insert({ id: 'fnd_a', profile_id: DEFAULT_PROFILE_ID, name: 'Fondo de ahorro' });
+    await db('fund_movements').insert({
+      id: 'fmv_a',
+      profile_id: DEFAULT_PROFILE_ID,
+      fund_id: 'fnd_a',
+      month_key: '2026-01',
+      type: 'deposit',
+      amount: 200,
+      date: new Date('2026-01-05T12:00:00Z'),
+    });
+
+    await expect(db.migrate.down()).rejects.toThrow(/fund movements exist/);
+
+    expect(await fundTableNames()).toEqual(['fund_movements', 'funds']);
+    expect(await db('fund_movements')).toHaveLength(1);
+  });
+
+  it('down() succeeds and restores the exact pre-003 (002) shape when the ledger is empty (task 1.4)', async () => {
+    await restoreCleanLatestState(); // ledger empty
+
+    await stepDown(1);
+
+    expect(await fundTableNames()).toEqual([]);
+
+    // Exact pre-003 shape still intact: the 002-era profile_id columns and
+    // budget_profiles table are untouched by 003's down().
+    const { rows: profileIdColumns } = await db.raw(
+      `SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'profile_id'`
+    );
+    expect(profileIdColumns.map((r) => r.table_name).sort()).toEqual(BACKFILLED_TABLES.slice().sort());
+
+    const { rows: profileTableRows } = await db.raw(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'budget_profiles'`
+    );
+    expect(profileTableRows).toHaveLength(1);
+
+    await stepUp(1); // restore latest for the rest of the suite
+    expect(await fundTableNames()).toEqual(['fund_movements', 'funds']);
+  });
+});
+
+// Shared teardown for BOTH describe blocks above — placed at module level
+// (not inside either describe's afterAll) so it runs exactly once, after
+// every test in this file, instead of closing the connection between the
+// 002 and 003 describe blocks.
+afterAll(async () => {
+  await restoreCleanLatestState();
+  await closeDb();
 });
