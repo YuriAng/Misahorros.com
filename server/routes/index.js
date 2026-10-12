@@ -11,6 +11,7 @@ import profilesRouter from './profiles.js';
 import categoriesRouter from './categories.js';
 import monthsRouter from './months.js';
 import transactionsRouter from './transactions.js';
+import fundsRouter from './funds.js';
 import importRouter from './import.js';
 
 const router = Router();
@@ -48,6 +49,7 @@ router.use('/profiles', profilesRouter);
 router.use('/categories', requireActiveProfile, categoriesRouter);
 router.use('/months', requireActiveProfile, monthsRouter);
 router.use('/transactions', requireActiveProfile, transactionsRouter);
+router.use('/funds', requireActiveProfile, fundsRouter);
 router.use('/import', requireActiveProfile, importRouter);
 
 export default router;
