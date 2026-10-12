@@ -116,6 +116,40 @@ export async function getMonthPayload(profileId, monthKey, executor = db) {
     date: row.date instanceof Date ? row.date.toISOString() : row.date,
   }));
 
+  // This month's fund movements. Scoped by (profile_id, month_key), which is
+  // exactly the leading edge of fund_movements_profile_month_idx. Ordered
+  // like transactions (date DESC, id DESC) so the client can render without
+  // sorting (design.md "getMonthPayload()"). `monthKey` is deliberately
+  // omitted here — it equals the payload's own `monthKey`, matching how
+  // `transactions` entries omit it too (the `POST .../movements` response
+  // includes it instead, since the client needs it there to pick a cache
+  // bucket after a write).
+  const fundMovementRows = await executor('fund_movements')
+    .where({ profile_id: profileId, month_key: monthKey })
+    .orderBy([
+      { column: 'date', order: 'desc' },
+      { column: 'id', order: 'desc' },
+    ]);
+  const fundMovements = fundMovementRows.map((row) => ({
+    id: row.id,
+    fundId: row.fund_id,
+    type: row.type,
+    amount: Number(row.amount),
+    note: row.note,
+    date: row.date instanceof Date ? row.date.toISOString() : row.date,
+  }));
+
+  // The SAME reduce src/state.js:getMonthTotals() runs over the SAME rows
+  // (once the client gains fund support) — parity is then structural, not a
+  // coincidence a test happens to catch (design.md "one row query reduced
+  // in JS, not a second SQL aggregate").
+  let fundDeposits = 0;
+  let fundWithdrawals = 0;
+  for (const movement of fundMovements) {
+    if (movement.type === 'deposit') fundDeposits += movement.amount;
+    else fundWithdrawals += movement.amount;
+  }
+
   // Per-category derivation — the exact aggregate from design.md's
   // "Query Rewrites" section, so no balance is ever persisted.
   const { rows: categoryRows } = await executor.raw(
@@ -174,11 +208,20 @@ export async function getMonthPayload(profileId, monthKey, executor = db) {
     income,
     budgets,
     transactions,
+    fundMovements,
     totals: {
       income: income.amount,
       totalBudgeted,
       totalSpent,
-      totalAvailable: income.amount - totalSpent,
+      fundDeposits,
+      fundWithdrawals,
+      // Deposits move money OUT of what's spendable this month; withdrawals
+      // move it back IN — so a deposit subtracts and a withdrawal adds
+      // (design.md "Decision: totals gains two gross terms; totalAvailable
+      // keeps its name"). Both terms are non-negative gross sums, never a
+      // signed net, so a deposit and withdrawal of the same amount in one
+      // month stay independently visible instead of cancelling to zero.
+      totalAvailable: income.amount - totalSpent - fundDeposits + fundWithdrawals,
     },
     categoryTotals,
     carryForward: {

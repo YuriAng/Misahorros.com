@@ -160,3 +160,94 @@ None blocking. Two transient `Acquire connection error: Connection terminated un
 ### Status
 
 9/9 tasks complete for Phase 2. Combined with Phase 1: 15/15 tasks complete across PR 1 + PR 2. Ready for verify.
+
+---
+
+## PR 3 of 5 (stacked-to-main) — Phase 3: Month Totals & Bootstrap Integration
+
+**Status**: COMPLETE — tasks 3.1–3.9 done. Branch `feat/savings-investment-funds-03-totals-bootstrap`, stacked on `feat/savings-investment-funds-02-services-routes`. Server-only — no `src/` file touched (client integration is PR 4–5 scope).
+
+### Completed Tasks
+
+- [x] 3.1 Modified `server/services/months.js:getMonthPayload()`: added a `fund_movements` query scoped by `(profile_id, month_key)`, ordered `date DESC, id DESC`, placed after the transactions read and before the category aggregate (exact position from design.md). Mapped rows with an inline object literal matching design.md's exact `getMonthPayload()` code, **not** `serializeFundMovement()` — see Deviations.
+- [x] 3.2 Computed `fundDeposits`/`fundWithdrawals` via a plain `for` reduce over the same `fundMovements` array (no second SQL aggregate); both added to the `totals` object.
+- [x] 3.3 Revised `totalAvailable` to `income.amount - totalSpent - fundDeposits + fundWithdrawals`, with an inline comment on why deposits subtract and withdrawals add.
+- [x] 3.4 Modified `server/services/bootstrap.js` (pre-existing file, **not** created — see Deviations): added `listFundsWithBalance` to the existing `Promise.all` alongside `categoryRows`/`profileRows`; `funds` added to the returned payload shape, transcribed verbatim from design.md's Query Rewrites code block.
+- [x] 3.5 `server/routes/index.js:GET /api/bootstrap` already called `buildBootstrapPayload` (landed before this SDD change) — **zero edit needed**; confirmed by reading the handler before touching anything, per task 3.5's own instruction to "call `buildBootstrapPayload` instead of inline aggregation."
+- [x] 3.6 RED: `tests/contract/parity.test.js` — extended the first parity fixture (`MONTH_KEY = '2026-05'`) with a fund (300 deposit + 120 withdrawal, both dated inside the month); asserted `server.body.totals.fundDeposits`/`fundWithdrawals` are both `> 0` (not just truthy) so an empty/unmodified fixture cannot pass vacuously. Also narrowed all three parity tests' client-vs-server `toEqual` comparisons to strip `fundDeposits`/`fundWithdrawals` before comparing against `getMonthTotals()` — see Deviations for why.
+- [x] 3.7 RED: `tests/contract/months.test.js` — new `describe` block, 3 tests: a 200 deposit lowers `totalAvailable` by exactly 200 and raises `fundDeposits` by 200; a 50 withdrawal (against a pre-seeded 500 balance, to avoid `409 insufficient_funds`) raises `totalAvailable` by exactly 50 and raises `fundWithdrawals` by 50; a 200 deposit + 200 withdrawal in one month leaves `totalAvailable` unchanged while both terms read 200 (pins the two-gross-term design against a naive net-only regression).
+- [x] 3.8 RED: `tests/contract/health-bootstrap.test.js` — confirmed the actual file name first (it is `health-bootstrap.test.js`, matching the task's own primary suggestion). Updated the fresh-database `toEqual` to include `funds: []`; added a new `describe` block with 2 tests: `GET /api/bootstrap` returns a `funds` array with the same shape `GET /api/funds` ships (`id`, `name`, `archived`, `createdAt`, `balance`); `PUT /api/profiles/active` returns `funds: []` for a newly activated profile with no funds of its own, then a fund created after the switch appears only in that profile's bootstrap.
+- [x] 3.9 GREEN: ran `npm test -- tests/contract/months.test.js tests/contract/parity.test.js tests/contract/health-bootstrap.test.js` → **21/21 passed**. Ran full `npm test` → **144/144 passed** (139 from PR 1+2 baseline + 5 net-new: 3 in `months.test.js`, 2 in `health-bootstrap.test.js`; `parity.test.js` gained assertions inside existing tests, not new `it` blocks).
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1–3.3 | `tests/contract/months.test.js`, `tests/contract/parity.test.js` | Contract (month payload) | ✅ 21/21 of the 3 target files run and passing before any edit | ✅ Written against the pre-edit `getMonthPayload()` (no `fundMovements`/`fundDeposits`/`fundWithdrawals` fields existed) | ✅ Passed after implementation | ✅ 3 distinct scenarios in `months.test.js` (deposit-only, withdrawal-only, combined-both) plus the parity fixture's combined case | ➖ None needed — direct transcription of design.md's exact code |
+| 3.4–3.5 | `tests/contract/health-bootstrap.test.js` | Contract (bootstrap) | ✅ same baseline run | ✅ Written against the pre-edit `buildBootstrapPayload()` (no `funds` key existed) | ✅ Passed after implementation | ✅ 2 cases: funds present in bootstrap, funds correctly scoped after a profile switch | ➖ None needed |
+| 3.6 | `tests/contract/parity.test.js` | Contract (parity) | ✅ same baseline run | ✅ Written — `fundDeposits`/`fundWithdrawals` referenced fields that did not exist pre-edit | ✅ Passed after implementation | ➖ Single fixture carries both a deposit and a withdrawal in the same assertion, which is the triangulating pair the task itself specifies | ➖ None needed |
+| 3.7 | `tests/contract/months.test.js` | Contract (totals) | ✅ same baseline run | ✅ Written (3 new `it`s) | ✅ Passed after implementation | ✅ 3 cases: deposit-only, withdrawal-only, combined (the combined case is the forced triangulation — a net-only implementation would pass the first two but fail the third) | ➖ None needed |
+| 3.8 | `tests/contract/health-bootstrap.test.js` | Contract (bootstrap) | ✅ same baseline run | ✅ Written | ✅ Passed | ✅ 2 cases (shape presence; profile-switch scoping) | ➖ None needed |
+| 3.9 | all 3 files + full suite | Contract | ✅ | ✅ | ✅ 21/21 scoped, 144/144 full suite | N/A (verification task) | N/A |
+
+**RED-before-GREEN discipline note**: tasks 3.1–3.5 (implementation) are ordered in `tasks.md` *before* the RED-test tasks 3.6–3.8, mirroring the exact same convention Phase 2 used (`server/services/funds.js` + `server/routes/funds.js` written at 2.1–2.5, RED tests written at 2.6–2.7). Because Phase 3 has no later "wiring" task that would keep the feature genuinely broken until after the RED tests are written (unlike Phase 2's router-mount at task 2.9), implementing 3.1–3.4 first would have made the RED tests pass immediately on first run — a false GREEN with no RED ever observed. To preserve genuine RED evidence: the `months.js`/`bootstrap.js` edits were captured as a patch, **reverted** to the pre-PR-3 state, the RED tests were written and run against that reverted state (confirmed: 10 failed / 11 passed, failures limited to exactly the new fund-aware assertions), then the patch was re-applied and the full scoped + full-suite runs were repeated to confirm GREEN. The committed diff is identical either way; only the verification order changed.
+
+### Test Summary
+
+- **Total tests written/modified**: 5 new `it` blocks (3 in `months.test.js`, 2 in `health-bootstrap.test.js`); 1 existing `it` extended with new assertions and a fund fixture (`parity.test.js`'s first test); 2 existing `it`s in `parity.test.js` adjusted for the new `totals` shape (fund-term stripping before client comparison); 1 existing `it` in `months.test.js` and 1 in `health-bootstrap.test.js` updated for the new zero-valued shape
+- **Total tests passing**: 21/21 in scope (`months.test.js` + `parity.test.js` + `health-bootstrap.test.js`); 144/144 across the full suite
+- **Layers used**: Contract (21 in scope)
+- **Approval tests**: the 3 pre-existing `toEqual`-shape assertions updated for the new `totals`/bootstrap shape (one in `months.test.js`, one in `health-bootstrap.test.js`, plus the two no-fund-fixture parity tests) are approval-style updates — they captured the OLD shape, were run to confirm they still passed against pre-edit code, then updated to the NEW expected shape and confirmed newly RED before the implementation made them GREEN again
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `npm test -- tests/contract/months.test.js tests/contract/parity.test.js tests/contract/health-bootstrap.test.js` → **21 passed (21)**, 3 test files passed |
+| Runtime harness command/scenario and exact result | Full `npm test` (`vitest run`) against the same ephemeral Docker Postgres harness as PR 1/2 — **144 passed (144)**, 17 test files passed. One transient `Acquire connection error: Connection terminated unexpectedly` log line appeared on one run; all reported pass counts were unaffected (same known ephemeral-Postgres pool noise documented in PR 1 and PR 2, not a regression introduced here). |
+| Rollback boundary | Revert `server/services/months.js` and `server/services/bootstrap.js` to their PR-2-landed state; revert the 3 test file edits (`tests/contract/months.test.js`, `tests/contract/parity.test.js`, `tests/contract/health-bootstrap.test.js`); revert the `tasks.md` checkbox update. No client file (`src/*`) was touched — Phase 4's cache-leak fix and fund state/UI readers have not started. `server/routes/index.js` and `server/routes/profiles.js` needed **zero** changes (already wired to `buildBootstrapPayload` from before this SDD change began). |
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `server/services/months.js` | Modified | Added the `fund_movements` query + inline row mapping (`fundMovements`); added the `fundDeposits`/`fundWithdrawals` reduce; revised `totalAvailable` formula with rationale comment |
+| `server/services/bootstrap.js` | Modified (pre-existing file; task 3.4 said "create" — see Deviations) | Added `listFundsWithBalance` to the existing `Promise.all`; `funds` added to the returned shape |
+| `tests/contract/months.test.js` | Modified | Updated the zero-valued-totals shape assertion; added a new `describe` block with 3 fund-totals tests (task 3.7) |
+| `tests/contract/parity.test.js` | Modified | Extended the first parity fixture with a fund + nonzero deposit/withdrawal (task 3.6, vacuum-guard assertion); narrowed all 3 tests' client/server `toEqual` comparisons to exclude fund terms the client (PR 4 scope) does not compute yet |
+| `tests/contract/health-bootstrap.test.js` | Modified | Added `funds: []` to the fresh-database shape; added a new `describe` block with 2 bootstrap-funds tests (task 3.8) |
+| `openspec/changes/savings-investment-funds/tasks.md` | Modified | Marked tasks 3.1–3.9 complete |
+| `openspec/changes/savings-investment-funds/apply-progress.md` | Modified | Appended this Phase 3 record |
+
+### Deviations from Design
+
+Two naming/file-state deviations from the literal task/spec text, both resolved in favor of design.md as the authoritative source (consistent with PR 2's precedent of design.md superseding literal task/spec prose where they conflict):
+
+1. **`server/services/bootstrap.js` already existed** — task 3.4 says "Create `server/services/bootstrap.js` (new file)," but the file was already present (dated before this SDD change, already exporting `buildBootstrapPayload` and already called by both `GET /api/bootstrap` and `PUT /api/profiles/active`). Verified directly by reading the file before editing. design.md's own File Changes table correctly lists this file as **"Modify,"** not "Create" — design.md and the actual repository state agree; only `tasks.md`'s task 3.4 prose is stale. Treated as a modify: `funds` was added to the existing `Promise.all`, matching design.md's Query Rewrites code block verbatim. Task 3.5 (wiring `GET /api/bootstrap` to call `buildBootstrapPayload`) was consequently a no-op — that wiring had already landed with the file itself.
+2. **`fundMovements` entries in the month payload omit `monthKey` and are not built via `serializeFundMovement()`** — task 3.1 says to map rows with `serializeFundMovement()` (which includes `monthKey` in its output, per `server/services/funds.js`). design.md's exact `getMonthPayload()` code block (and its accompanying rationale: "`fundMovements` entries deliberately omit `monthKey`... matching how `transactions` entries omit it... while the `POST` response... includes it") explicitly uses an inline object literal without `monthKey` instead. Followed design.md's literal code and documented rationale over the task's summary phrasing.
+
+One field-naming note carried forward from PR 2's precedent, not newly introduced here: `specs/budget-api/spec.md`'s "Month Totals Include Fund Movement Terms" requirement prose names the fields `totalDeposits`/`totalWithdrawals`, while design.md and `tasks.md` (3.2–3.3) both say `fundDeposits`/`fundWithdrawals`. Implemented as `fundDeposits`/`fundWithdrawals` per design.md and tasks.md, matching the already-landed `funds.js`/`listFundsWithBalance` naming for consistency within the codebase. Flagged again for a future `sdd-verify`/`sdd-archive` pass to reconcile the spec prose's field names, same as PR 2's flagged reconciliation for endpoint naming.
+
+**Cross-PR client/server shape divergence** (not a design deviation, but worth recording precisely because it is temporary and intentional): adding `fundDeposits`/`fundWithdrawals` to `totals` and revising `totalAvailable`'s formula server-side, while `src/state.js:getMonthTotals()` is explicitly out of scope until PR 4, means the client's old totals and the server's new totals genuinely diverge once a fund movement exists in a month (not just a shape difference — `totalAvailable`'s *value* differs too, since the client still uses the pre-fund formula). `tests/contract/parity.test.js`'s three tests were narrowed accordingly: the no-fund-movement tests strip the two new always-present-but-zero fields before comparing structurally against the client; the one test with real fund movements additionally recomputes and asserts the server's formula directly, and compares the client only against the pre-fund-term totals shape. This narrowing is testable, intentional, and self-documenting — it is expected to collapse back into a single full-object `toEqual` once PR 4 lands `getMonthTotals()`'s fund-aware revision.
+
+### Issues Found
+
+None blocking. One transient `Acquire connection error: Connection terminated unexpectedly` log line during the full-suite run — same documented ephemeral-Postgres-pool noise as PR 1 and PR 2, with the full 144/144 pass count unaffected.
+
+### Remaining Tasks (Phases 4-5, NOT in this PR)
+
+- [ ] 4.x Client state management + critical cache-leak fix
+- [ ] 5.x Client rendering & event binding
+- [ ] 6.x Contract & integration tests (isolation, parity, migration-interaction)
+- [ ] 7.x Final verification & documentation
+
+### Workload / PR Boundary
+
+- Mode: stacked PR slice (PR 3 of 5, `stacked-to-main`)
+- Current work unit: Unit 3 — "Month totals revision + bootstrap integration" (per tasks.md's Suggested Work Units table)
+- Boundary: starts from PR 2's landed fund CRUD + movements API (`server/services/funds.js`, `server/routes/funds.js`, router mount — zero changes needed here); ends with `GET /api/months/{k}` and `GET /api/bootstrap`/`PUT /api/profiles/active` all fund-aware and contract-tested, zero changes to any client file (`src/*`)
+- Estimated review budget impact: `git diff --stat` for this PR's 6 changed files (excluding `apply-progress.md` itself, which is this evidence record, not implementation): **214 insertions, 15 deletions = 229 authored changed lines** — well under the 400-line budget for this slice, consistent with design.md's estimate that this phase needs "one added query + one JS reduce" in `months.js` and "one query joined into an existing `Promise.all`" in `bootstrap.js`
+
+### Status
+
+9/9 tasks complete for Phase 3. Combined with Phase 1 + Phase 2: 24/24 tasks complete across PR 1 + PR 2 + PR 3. Ready for verify.

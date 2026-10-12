@@ -67,8 +67,23 @@ describe('server/client balance parity', () => {
       .post('/api/transactions')
       .send({ categoryId: catB.id, amount: 500, date: `${MONTH_KEY}-07T12:00:00.000Z` }); // exceeds budget — negative remaining
 
+    // Fund movements this month — task 3.6 (critical parity-vacuum
+    // mitigation, design.md "Vacuous parity" risk): an empty or
+    // un-updated fixture would let both sides compute zero fund terms and
+    // the assertions below would pass without proving anything. Nonzero
+    // amounts on BOTH a deposit and a withdrawal make that impossible.
+    const fund = await request(app).post('/api/funds').send({ name: 'Fondo de ahorro' });
+    await request(app)
+      .post(`/api/funds/${fund.body.id}/movements`)
+      .send({ type: 'deposit', amount: 300, date: `${MONTH_KEY}-08` });
+    await request(app)
+      .post(`/api/funds/${fund.body.id}/movements`)
+      .send({ type: 'withdrawal', amount: 120, date: `${MONTH_KEY}-09` });
+
     const server = await request(app).get(`/api/months/${MONTH_KEY}`);
     expect(server.status).toBe(200);
+    expect(server.body.totals.fundDeposits).toBeGreaterThan(0);
+    expect(server.body.totals.fundWithdrawals).toBeGreaterThan(0);
 
     // Install the SAME fixture, in the exact `defaultData()` month shape,
     // into the client's in-memory cache — the shared fixture data both
@@ -93,7 +108,19 @@ describe('server/client balance parity', () => {
     expect(server.body.categoryTotals[catB.id].remaining).toBe(-300);
     expect(getCategoryRemaining(MONTH_KEY, catB.id)).toBe(-300);
 
-    expect(getMonthTotals(MONTH_KEY)).toEqual(server.body.totals);
+    // src/state.js:getMonthTotals() does not yet read fund terms — that is
+    // PR 4 of 5's scope, explicitly out of bounds here. The server's
+    // revised totalAvailable formula (income - totalSpent - fundDeposits +
+    // fundWithdrawals) is pinned directly against the gross terms above
+    // instead of coupling this server-only PR to unmodified client code.
+    const { fundDeposits, fundWithdrawals, totalAvailable, ...totalsWithoutFundTerms } = server.body.totals;
+    expect(totalAvailable).toBe(
+      totalsWithoutFundTerms.income - totalsWithoutFundTerms.totalSpent - fundDeposits + fundWithdrawals
+    );
+    expect(getMonthTotals(MONTH_KEY)).toEqual({
+      ...totalsWithoutFundTerms,
+      totalAvailable: totalsWithoutFundTerms.income - totalsWithoutFundTerms.totalSpent,
+    });
   });
 
   it('parity holds for an untouched month too: both sides agree on all-zero totals', async () => {
@@ -110,7 +137,14 @@ describe('server/client balance parity', () => {
     expect(getCategoryBudget('2026-09', category.id)).toBe(0);
     expect(getCategorySpent('2026-09', category.id)).toBe(0);
     expect(getCategoryRemaining('2026-09', category.id)).toBe(0);
-    expect(getMonthTotals('2026-09')).toEqual(server.body.totals);
+    // No fund movements in this fixture, so fundDeposits/fundWithdrawals
+    // are 0 and totalAvailable is unaffected — but the client (PR 4 scope)
+    // does not have those two keys at all yet, so they are stripped before
+    // the structural comparison.
+    const { fundDeposits, fundWithdrawals, ...totalsWithoutFundTerms } = server.body.totals;
+    expect(fundDeposits).toBe(0);
+    expect(fundWithdrawals).toBe(0);
+    expect(getMonthTotals('2026-09')).toEqual(totalsWithoutFundTerms);
   });
 
   it('parity holds independently for a second, non-default profile (task 7.1/7.2)', async () => {
@@ -163,6 +197,12 @@ describe('server/client balance parity', () => {
     expect(server.body.categoryTotals[catB2.id]).toEqual({ budget: 0, spent: 60, remaining: -60 });
     expect(getCategoryRemaining(MONTH_KEY, catB2.id)).toBe(-60);
 
-    expect(getMonthTotals(MONTH_KEY)).toEqual(server.body.totals);
+    // No fund movements in profile B's fixture — see the "untouched month"
+    // test above for why fundDeposits/fundWithdrawals must be stripped
+    // before comparing against the client, which does not have them yet.
+    const { fundDeposits, fundWithdrawals, ...totalsWithoutFundTerms } = server.body.totals;
+    expect(fundDeposits).toBe(0);
+    expect(fundWithdrawals).toBe(0);
+    expect(getMonthTotals(MONTH_KEY)).toEqual(totalsWithoutFundTerms);
   });
 });

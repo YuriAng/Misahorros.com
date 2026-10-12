@@ -8,6 +8,7 @@ import db from '../db.js';
 import { SETTINGS_KEYS, mapSettingsRows } from './settings.js';
 import { getMonthPayload } from './months.js';
 import { serializeProfile } from './profiles.js';
+import { listFundsWithBalance } from './funds.js';
 
 function serializeCategory(row) {
   return {
@@ -33,11 +34,17 @@ export async function buildBootstrapPayload(executor = db, { profileId, monthKey
   const settings = mapSettingsRows(settingsRows);
   const activeProfileId = profileId || settings.activeProfile;
 
-  const [categoryRows, profileRows] = await Promise.all([
+  // `funds` joins the existing Promise.all, so bootstrap gains no round
+  // trip (design.md "Decision: funds (with balance) ship in
+  // buildBootstrapPayload"). Because this is the shared builder, both
+  // GET /api/bootstrap and PUT /api/profiles/active gain `funds` from this
+  // one edit.
+  const [categoryRows, profileRows, funds] = await Promise.all([
     activeProfileId
       ? executor('categories').where({ profile_id: activeProfileId }).orderBy('created_at', 'asc')
       : Promise.resolve([]),
     executor('budget_profiles').where({ archived: false }).orderBy('created_at', 'asc'),
+    activeProfileId ? listFundsWithBalance(executor, activeProfileId) : Promise.resolve([]),
   ]);
 
   const effectiveMonthKey = monthKey || settings.activeMonth;
@@ -48,6 +55,7 @@ export async function buildBootstrapPayload(executor = db, { profileId, monthKey
     settings,
     profiles: profileRows.map(serializeProfile),
     categories: categoryRows.map(serializeCategory),
+    funds,
     month,
   };
 }
