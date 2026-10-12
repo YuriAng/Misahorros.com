@@ -3,7 +3,7 @@
 import {
   getData, getActiveMonth, getActiveCategories,
   getCategorySpent, getCategoryBudget, getCategoryRemaining, getMonthTotals,
-  getProfiles, getCarryForwardInfo
+  getProfiles, getCarryForwardInfo, getFunds, getFundMonthMovements
 } from './state.js';
 import { formatCurrency, formatMonthLabel } from './utils.js';
 
@@ -11,6 +11,7 @@ export function renderApp() {
   renderProfileSelect();
   renderMonthLabel();
   renderSummary();
+  renderFunds();
   renderCategories();
   renderTransactions();
   renderCategorySelectOptions();
@@ -40,10 +41,16 @@ function renderMonthLabel() {
 
 function renderSummary() {
   const monthKey = getActiveMonth();
-  const { income, totalBudgeted, totalSpent, totalAvailable } = getMonthTotals(monthKey);
+  const { income, totalBudgeted, totalSpent, fundDeposits, fundWithdrawals, totalAvailable } = getMonthTotals(monthKey);
   const currency = getData().settings.currency;
-  const pctUsed = income > 0 ? Math.min((totalSpent / income) * 100, 100) : (totalSpent > 0 ? 100 : 0);
-  const status = budgetStatus(totalSpent, income);
+  // El dinero que entra por retiros cuenta como disponible, y los depósitos
+  // cuentan como salida: la barra y el número "Disponible" deben describir
+  // el MISMO dinero, o la tarjeta se contradice (depositar todo el ingreso
+  // mostraría $0 disponible sobre una barra verde al 0%).
+  const outflow = totalSpent + fundDeposits;
+  const inflow = income + fundWithdrawals;
+  const pctUsed = inflow > 0 ? Math.min((outflow / inflow) * 100, 100) : (outflow > 0 ? 100 : 0);
+  const status = budgetStatus(outflow, inflow);
   const carryForward = getCarryForwardInfo(monthKey);
 
   const carryForwardBanner = carryForward.available ? `
@@ -53,6 +60,13 @@ function renderSummary() {
         <div class="summary-meta">Trae el ingreso y los presupuestos por categoría; luego puedes editarlos.</div>
       </div>
       <button class="btn-link" id="carryForwardBtn">Copiar</button>
+    </div>
+  ` : '';
+
+  const fundMeta = (fundDeposits || fundWithdrawals) ? `
+    <div class="summary-meta">
+      <span>A fondos: ${formatCurrency(fundDeposits, currency)}</span>
+      <span>Desde fondos: ${formatCurrency(fundWithdrawals, currency)}</span>
     </div>
   ` : '';
 
@@ -78,7 +92,44 @@ function renderSummary() {
       <span>Gastado: ${formatCurrency(totalSpent, currency)}</span>
       <span>Presupuestado: ${formatCurrency(totalBudgeted, currency)}</span>
     </div>
+    ${fundMeta}
   `;
+}
+
+function renderFunds() {
+  const monthKey = getActiveMonth();
+  const funds = getFunds();
+  const currency = getData().settings.currency;
+  const list = document.getElementById('fundsList');
+
+  if (funds.length === 0) {
+    list.innerHTML = `<p class="empty-state">Aún no tienes fondos. Toca "+ Nuevo" para crear uno (por ejemplo: Fondo de ahorro, Fondo de inversión).</p>`;
+    return;
+  }
+
+  list.innerHTML = funds.map(fund => {
+    const movements = getFundMonthMovements(monthKey, fund.id);
+    const inThis = movements.filter(m => m.type === 'deposit').reduce((s, m) => s + m.amount, 0);
+    const outThis = movements.filter(m => m.type === 'withdrawal').reduce((s, m) => s + m.amount, 0);
+    const monthMeta = (inThis || outThis)
+      ? `<span>Este mes: +${formatCurrency(inThis, currency)} / −${formatCurrency(outThis, currency)}</span>`
+      : `<span>Sin movimientos este mes</span>`;
+
+    return `
+      <div class="fund-card" data-id="${fund.id}">
+        <div class="fund-header">
+          <span class="fund-name">${fund.name}</span>
+          <button class="btn-icon-sm edit-fund" data-id="${fund.id}" aria-label="Editar ${fund.name}">✎</button>
+        </div>
+        <div class="fund-balance">${formatCurrency(fund.balance, currency)}</div>
+        <div class="fund-meta">${monthMeta}</div>
+        <div class="fund-actions">
+          <button class="btn-link fund-deposit" data-id="${fund.id}">Depositar</button>
+          <button class="btn-link fund-withdraw" data-id="${fund.id}" ${fund.balance <= 0 ? 'disabled' : ''}>Retirar</button>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function renderCategories() {

@@ -285,6 +285,31 @@ describe('POST /api/funds/:id/movements', () => {
   });
 });
 
+// Phase 6 (task 6.3): design.md "New Risks Discovered During Design" flags
+// that a fund movement takes the composite FK to `months`, so it MUST call
+// `materializeMonth` exactly like a transaction does — which disables the
+// carry-forward banner. Pinned as a contract so the interaction stays
+// documented, not an implicit side effect a future change could break.
+describe('Fund movement materializes the month (task 6.3)', () => {
+  it('recording a deposit materializes the month and disables the carry-forward offer', async () => {
+    // Materialize the prior month so 2026-07 has a carry-forward offer to lose.
+    await request(app).put('/api/months/2026-06/income').send({ amount: 900 });
+
+    const before = await request(app).get('/api/months/2026-07');
+    expect(before.body.materialized).toBe(false);
+    expect(before.body.carryForward).toEqual({ available: true, sourceMonth: '2026-06' });
+
+    const fund = await request(app).post('/api/funds').send({ name: 'Ahorro' });
+    await request(app)
+      .post(`/api/funds/${fund.body.id}/movements`)
+      .send({ type: 'deposit', amount: 200, date: '2026-07-05' });
+
+    const after = await request(app).get('/api/months/2026-07');
+    expect(after.body.materialized).toBe(true);
+    expect(after.body.carryForward).toEqual({ available: false, sourceMonth: '2026-06' });
+  });
+});
+
 describe('Cross-profile isolation (savings-funds spec, "Profile Isolation For Funds")', () => {
   it('a fund created under profile A is not visible or writable while profile B is active', async () => {
     const createdA = await request(app).post('/api/funds').send({ name: 'Fondo A' });

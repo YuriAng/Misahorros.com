@@ -240,6 +240,50 @@ describe('Carry-forward budgets isolation (task 6.2/6.5)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// savings-investment-funds Phase 6 (tasks 6.1-6.2): fund isolation matrix.
+// GET /api/funds, GET/POST .../movements foreign-id 404s are already
+// pinned by tests/contract/funds.test.js's "Cross-profile isolation"
+// describe block (PR2, tasks 2.7). What is genuinely new here is isolation
+// of the DERIVED month totals (`fundDeposits`/`fundWithdrawals`), which no
+// existing test exercises across two profiles.
+// ---------------------------------------------------------------------------
+
+describe('Fund movement totals isolation (task 6.2)', () => {
+  it('a deposit recorded under profile A never raises profile B\'s totals.fundDeposits/fundWithdrawals', async () => {
+    const fundA = await request(app).post('/api/funds').send({ name: 'Fondo A' });
+    await request(app)
+      .post(`/api/funds/${fundA.body.id}/movements`)
+      .send({ type: 'deposit', amount: 300, date: '2026-06-10' });
+
+    const profileB = await createProfile('Negocio');
+    await setActiveProfile(profileB.id);
+
+    const resB = await request(app).get('/api/months/2026-06');
+    expect(resB.body.totals.fundDeposits).toBe(0);
+    expect(resB.body.totals.fundWithdrawals).toBe(0);
+    expect(resB.body.fundMovements).toEqual([]);
+  });
+
+  it('profile A\'s totalAvailable is unaffected by profile B\'s own movements to its own fund', async () => {
+    await request(app).put('/api/months/2026-06/income').send({ amount: 1000 });
+    const before = await request(app).get('/api/months/2026-06');
+    expect(before.body.totals.totalAvailable).toBe(1000);
+
+    const profileB = await createProfile('Negocio');
+    await setActiveProfile(profileB.id);
+    const fundB = await request(app).post('/api/funds').send({ name: 'Fondo B' });
+    await request(app)
+      .post(`/api/funds/${fundB.body.id}/movements`)
+      .send({ type: 'deposit', amount: 400, date: '2026-06-12' });
+
+    await setActiveProfile(DEFAULT_PROFILE_ID);
+    const afterA = await request(app).get('/api/months/2026-06');
+    expect(afterA.body.totals.totalAvailable).toBe(1000);
+    expect(afterA.body.totals.fundDeposits).toBe(0);
+  });
+});
+
 describe('Database-level rejection of cross-profile references (task 6.3)', () => {
   it('a direct INSERT into transactions with a cross-profile category_id is rejected by the composite FK, not just the route', async () => {
     const profileB = await createProfile('Negocio');

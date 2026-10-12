@@ -26,6 +26,14 @@
     <main>
       <section class="summary-card" id="summaryCard"></section>
 
+      <section class="funds-section">
+        <div class="section-header">
+          <h2>Fondos</h2>
+          <button id="addFundBtn" class="btn-link">+ Nuevo</button>
+        </div>
+        <div id="fundsList" class="funds-list"></div>
+      </section>
+
       <section class="categories-section">
         <div class="section-header">
           <h2>Categorías</h2>
@@ -97,6 +105,45 @@
           <button type="button" class="btn-danger" id="deleteCategoryBtn" hidden>Eliminar</button>
           <button type="button" class="btn-secondary" data-close>Cancelar</button>
           <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Formulario: fondo (crear/editar/archivar) -->
+    <div id="fundFormOverlay" class="overlay" hidden>
+      <form id="fundForm" class="sheet">
+        <h2 id="fundFormTitle">Nuevo fondo</h2>
+        <input type="hidden" id="fundId">
+        <label>Nombre
+          <input type="text" id="fundName" maxlength="30" required placeholder="Ej. Fondo de ahorro">
+        </label>
+        <div class="sheet-actions">
+          <button type="button" class="btn-danger" id="deleteFundBtn" hidden>Archivar</button>
+          <button type="button" class="btn-secondary" data-close>Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Formulario: movimiento de fondo (depósito/retiro) -->
+    <div id="fundMovementFormOverlay" class="overlay" hidden>
+      <form id="fundMovementForm" class="sheet">
+        <h2 id="fundMovementFormTitle">Depositar en el fondo</h2>
+        <input type="hidden" id="movementFundId">
+        <input type="hidden" id="movementType">
+        <p class="summary-meta" id="movementBalanceHint"></p>
+        <label>Monto
+          <input type="number" id="movementAmount" step="0.01" min="0.01" required inputmode="decimal" placeholder="0.00">
+        </label>
+        <label>Fecha
+          <input type="date" id="movementDate" required>
+        </label>
+        <label>Nota (opcional)
+          <input type="text" id="movementNote" maxlength="80" placeholder="Ej. Ahorro de octubre">
+        </label>
+        <div class="sheet-actions">
+          <button type="button" class="btn-secondary" data-close>Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar movimiento</button>
         </div>
       </form>
     </div>

@@ -341,4 +341,104 @@ None blocking. The `Acquire connection error: Connection terminated unexpectedly
 
 ### Status
 
-10/10 tasks complete for Phase 4. Combined with Phase 1 + Phase 2 + Phase 3: 34/34 tasks complete across PR 1 + PR 2 + PR 3 + PR 4. Ready for verify.
+10/10 tasks complete for Phase 4. Combined with Phase 1 + Phase 2 + Phase 3: 34/34 tasks complete across PR 1 + PR 2 + PR 3 + PR 4.
+
+---
+
+## PR 5 of 5 (stacked-to-main) — Phase 5: Client Rendering & Event Binding, + Phase 6 + Phase 7
+
+**Status**: COMPLETE — tasks 5.1–5.10 (Phase 5, hard requirement), 6.1–6.6 (Phase 6), and 7.1–7.5 (Phase 7) all done. Branch `feat/savings-investment-funds-05-ui-rendering`, stacked on `feat/savings-investment-funds-04-client-state`. **This is the final PR of the 5-PR stacked chain.**
+
+### Completed Tasks — Phase 5 (UI, hard requirement)
+
+- [x] 5.1 `index.html`: added `.funds-section` between `#summaryCard` and `.categories-section` — `#addFundBtn` ("+ Nuevo") + `#fundsList` container, empty state handled entirely by `renderFunds()`.
+- [x] 5.2 `#fundFormOverlay` added, copied structurally from `#categoryFormOverlay`: `#fundId` (hidden), `#fundName` input, `#fundFormTitle` (dynamic), `#deleteFundBtn` (hidden until edit mode), cancel/save actions.
+- [x] 5.3 `#fundMovementFormOverlay` added: `#movementFundId` (hidden), `#movementType` (hidden, set by the opener, never a `<select>` — matches design.md's rationale that the user already expressed intent by clicking "Depositar"/"Retirar"), `#movementAmount`, `#movementDate`, `#movementNote`, `#movementBalanceHint` (display only), cancel/save.
+- [x] 5.4 `src/render.js:renderFunds()` — called from `renderApp()` between `renderSummary()` and `renderCategories()`; renders every live fund with name, balance, this-month net deposits/withdrawals (or "Sin movimientos este mes"), edit/deposit/withdraw actions; empty-state message when `getFunds()` returns `[]`. Transcribed from design.md's exact code block.
+- [x] 5.5 `src/render.js:renderSummary()` — destructures `fundDeposits`/`fundWithdrawals` from `getMonthTotals()`; `pctUsed`/`status` now computed from `outflow = totalSpent + fundDeposits` against `inflow = income + fundWithdrawals` (previously spending-only); conditional `fundMeta` row ("A fondos: $X" / "Desde fondos: $Y") appended to `.summary-meta` when either term is nonzero.
+- [x] 5.6 `src/main.js` — delegated click listener on `#fundsList`: `.edit-fund` opens the fund form in edit mode; `.fund-deposit`/`.fund-withdraw` open the movement form with the correct `type`; the withdraw button ships `disabled` in the rendered markup when `fund.balance <= 0` (UX hint only — `renderFunds()`'s own ternary, not a separate JS guard; the server's `409 insufficient_funds` is the real rule).
+- [x] 5.7 `src/main.js` — `#addFundBtn` opens `#fundFormOverlay` via `openFundFormFor(null)`; `#fundForm` submit branches `renameFund()`/`addFund()` on the hidden `#fundId`'s presence; `#deleteFundBtn` visible only in edit mode (toggled by `openFundFormFor`), archives via `confirm()` → `archiveFund()` inside `withBusy()`, mirroring `#deleteProfileBtn`'s exact shape.
+- [x] 5.8 `src/main.js` — `#fundMovementForm` submit wraps `addFundMovement(fundId, { type, amount, note, date })` in `withBusy()`, closes `#fundMovementFormOverlay` on success; a thrown `ApiError` (e.g. `409 insufficient_funds`, `409 fund_archived`) surfaces through the existing `showError()` banner path, same as every other `withBusy()`-wrapped handler. `openFundMovementFormFor()` sets `#movementDate` via the existing `toDateInputValue()` and fills `#movementBalanceHint` via `formatCurrency(getFundBalance(fundId), currency)` (imported from `./utils.js`, not a duplicated `Intl.NumberFormat` call).
+- [x] 5.9 Verified (no code change needed): both new overlays use the identical `class="overlay"` + `[data-close]` markup shape as `#categoryFormOverlay`/`#profileFormOverlay`, so the existing module-load-time `document.querySelectorAll('[data-close]').forEach(...)` wiring (`src/main.js:36-38`) picks them up automatically, because they are static `index.html` markup present at module-load time, not dynamically rendered.
+- [x] 5.10 `src/style.css` — added `.funds-section` (flex column), `.funds-list` (flex column, 10px gap, matches `.categories-list`), `.fund-card` (same card shell as `.category-card`/`.summary-card`: surface background, `--radius-lg`, shadow), `.fund-header`, `.fund-name`, `.fund-balance` (1.3rem/700 weight, `--color-ok` green — a positive quantity of money, distinct from `.transaction-amount`'s red "money spent" convention, which is the correct semantic: a fund balance is money held, not money gone), `.fund-meta`, `.fund-actions` (flex row, reuses `.btn-link`/`.btn-icon-sm` from the existing stylesheet, zero new button classes).
+
+### Completed Tasks — Phase 6 (Contract & Integration Tests)
+
+- [x] 6.1 `tests/contract/isolation.test.js` fund-isolation matrix (GET zero cross-profile funds; GET/POST movements foreign-id `404`) — **already fully covered** by `tests/contract/funds.test.js`'s "Cross-profile isolation" describe block (PR2, task 2.7, lines 288-341): exercises exactly `GET /api/funds` (zero foreign funds), `PATCH`/`DELETE`/`POST .../movements` all returning `404` for a foreign fund id. No duplicate test added to `isolation.test.js` for this exact matrix, per the apply instructions' explicit "only add what's genuinely missing" directive — verified by reading the file before writing anything new.
+- [x] 6.2 `tests/contract/isolation.test.js` — **genuinely missing**, added: `describe('Fund movement totals isolation (task 6.2)', ...)` with 2 tests — (a) a deposit recorded under profile A leaves profile B's `totals.fundDeposits`/`fundWithdrawals` at `0` and `fundMovements` at `[]` after switching; (b) profile A's `totalAvailable` is unchanged by profile B recording its own deposit to its own fund after switching back to A. Neither test existed before this PR — the pre-existing fund-totals tests (PR3, `months.test.js` task 3.7) only exercised a single profile.
+- [x] 6.3 Fund-movement-materializes-month interaction — **genuinely missing**, added to `tests/contract/funds.test.js`: `describe('Fund movement materializes the month (task 6.3)', ...)` — materializes the prior month via income, confirms the next month's `carryForward.available` starts `true`, records a fund deposit, confirms the month is now `materialized: true` and `carryForward.available` flipped to `false`. Pins design.md's "New Risks Discovered During Design" entry ("A fund movement materializes the month, silently disabling the carry-forward banner") as an explicit contract instead of an implicit side effect.
+- [x] 6.4 `tests/contract/migration.test.js` `003` up/down contract — **already fully covered** by PR1 (tasks 1.2–1.5): `describe('server/migrations/003_savings_investment_funds.js', ...)` has exactly the three required cases (up creates both tables with exact shape; down refuses once a movement exists; down succeeds and restores the exact pre-003/002 shape on an empty ledger). Verified by reading the file before writing anything; no new test added.
+- [x] 6.5 GREEN: `npm test -- tests/contract/isolation.test.js tests/contract/funds.test.js` → **44 passed (44)**, 2 test files passed. Full `npm test -- tests/contract/` (via the full suite run below) confirms no cross-profile leakage and all `409` guards trigger correctly.
+- [x] 6.6 GREEN: `tests/contract/migration.test.js` passes as part of the full suite below (unchanged in this PR; already green since PR1) — up/down contract and no-data-loss-on-empty-down both hold.
+
+### Completed Tasks — Phase 7 (Final Verification & Documentation)
+
+- [x] 7.1 GREEN: full `npm test` → **158 passed (158)**, 17 test files passed (155 PR1-4 baseline + 3 net-new: 2 in `isolation.test.js`, 1 in `funds.test.js`). Zero unrelated test files modified.
+- [x] 7.2 GREEN: `npm run build` → `dist/index.html` (8.60 kB, gzip 1.93 kB), `dist/assets/index-*.css` (6.75 kB, gzip 1.76 kB), `dist/assets/index-*.js` (24.69 kB, gzip 6.78 kB) — built in ~200ms, zero errors. No TypeScript/linting configured in this project (confirmed in `openspec/config.yaml`), so "no TypeScript/linting errors" is vacuously true by project convention, not skipped.
+- [x] 7.3 Manual smoke test — see the exact rationale recorded in `tasks.md`'s 7.3 line: this repo has no DOM/UI test layer (confirmed: `tests/` contains only `tests/unit/` and `tests/contract/`), so a literal browser click-through is unavailable to this agent. In its place: (a) confirmed the production `dist/assets/index-*.js` bundle contains the new funds UI code paths via distinguishing literal strings present after minification (`fund-deposit`, `fund-withdraw`, `edit-fund`, `Depositar en el fondo`, `A fondos`); (b) every behavioral step of the smoke-test script runs against a real Express server + real ephemeral Postgres via the contract suite (not mocks) — create/deposit/withdraw/balance-and-availability-change/second-fund/switch/isolation/archive-at-zero/archive-with-balance-409 are all covered by `funds.test.js`, `months.test.js`, and this PR's `isolation.test.js` additions. The one genuinely untested step is the literal DOM paint of the empty-funds-state string, which has the same no-test-coverage precedent as `renderCategories()`'s empty state in this same codebase — not a new gap this change introduces.
+- [x] 7.4 Decision log — see "Decision Log (task 7.4)" below.
+- [x] 7.5 Deliverable checklist — see "Deliverable Checklist (task 7.5)" below.
+
+### Decision Log (task 7.4)
+
+Both open questions from design.md's "Open Questions" section are resolved as follows, per design.md's own rationale (no new decision made in this PR — documenting the already-implemented choice per task 7.4's instruction):
+
+1. **Fund-card ordering is `created_at ASC`, matching categories** — `server/services/funds.js:listFundsWithBalance()`'s `ORDER BY f.created_at ASC` (PR2) is the implemented and shipped behavior. Balance-descending ordering was considered in design.md but not implemented; the owner has not requested a change, and `created_at ASC` matches `categories`'s own ordering convention exactly (`server/services/categories.js`), so a new user's first-created fund stays first in muscle memory, consistent with how the first-created category already behaves.
+2. **Append-only ledger is accepted as-is** — a mistyped deposit is corrected by recording a compensating withdrawal (or vice versa), leaving both rows visible in `GET /api/funds/{id}/movements`'s history. This was design.md's explicit choice ("Decision: the ledger is append-only — no movement edit or delete in this change"), implemented in PR2 (`POST` is the only write to `fund_movements`; no `PUT`/`DELETE` route exists for movements) and never revisited in PR3–PR5. Movement editing remains a possible additive future change, out of scope here.
+
+### Deliverable Checklist (task 7.5)
+
+| Item | Proven by |
+|---|---|
+| Migration creates tables with exact schema | PR1, `server/migrations/003_savings_investment_funds.js` + `tests/contract/migration.test.js` (up() shape assertions) |
+| All constraints enforce derived-balance invariant | PR1, `tests/contract/invariant.test.js` (`FORBIDDEN_COLUMN_NAMES` includes `balance`/`fund_balance`/`total_deposited`/`total_withdrawn`; pinned 8-table list) + the DB-level `CHECK`/composite-FK constraints in `003`'s DDL |
+| Server-computed balances ship in bootstrap and month payloads | PR3, `server/services/bootstrap.js` (`funds` array with `balance`) + `server/services/months.js` (`fundMovements` + `totals.fundDeposits`/`fundWithdrawals`); `tests/contract/health-bootstrap.test.js` + `tests/contract/months.test.js` |
+| Client cache-leak fixed in `setActiveProfile()` | PR4, `src/state.js:setActiveProfile()` — `cache.funds = payload.funds.map(f => ({ ...f }))` wholesale replacement; dedicated unit test in `tests/unit/state.test.js` |
+| Parity test guards against vacuous pass | PR3, `tests/contract/parity.test.js` — asserts `server.body.totals.fundDeposits > 0` in the fund-bearing fixture so an unmodified fixture cannot pass vacuously; widened to full-object `toEqual` in PR4 once the client caught up |
+| Fund-movement-materializes-month interaction documented | This PR (PR5), `tests/contract/funds.test.js`'s "Fund movement materializes the month (task 6.3)" — pins design.md's flagged risk as an explicit, executable contract |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `npm test -- tests/contract/isolation.test.js tests/contract/funds.test.js` → **44 passed (44)**, 2 test files passed |
+| Runtime harness command/scenario and exact result | Full `npm test` (`vitest run`) against the same ephemeral Docker Postgres harness as every prior PR in this change — **158 passed (158)**, 17 test files passed. `npm run build` (`vite build`) → clean production build, 3 output assets, zero errors. Confirmed the minified `dist/assets/index-*.js` genuinely contains the new funds UI code via literal distinguishing strings (`fund-deposit`, `fund-withdraw`, `edit-fund`, `Depositar en el fondo`, `A fondos`) surviving minification — this is the closest available proxy to a browser smoke test, given this repo ships no DOM/UI test harness (confirmed by inspecting `tests/` directory structure: only `tests/unit/` and `tests/contract/` exist, zero browser/jsdom/Playwright layer). |
+| Rollback boundary | Revert `index.html`, `src/render.js`, `src/main.js`, `src/style.css` to their PR-4-landed state (Phase 5); revert `tests/contract/isolation.test.js` and `tests/contract/funds.test.js` to their PR-4-landed content (Phase 6); revert the `tasks.md` checkbox updates. This is the final PR in the stacked chain — reverting it returns the app to PR4's state (fund-aware client cache/state exists, but no UI renders or wires it, and the fund-isolation-totals + materialization contract tests do not exist). No server file (`server/*`) was touched in this PR. |
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|----------------|
+| `index.html` | Modified | `.funds-section` (`#addFundBtn`, `#fundsList`) between `#summaryCard` and `.categories-section`; `#fundFormOverlay` and `#fundMovementFormOverlay`, both structurally copied from `#categoryFormOverlay` |
+| `src/render.js` | Modified | Added `renderFunds()`, called from `renderApp()`; `renderSummary()` revised to compute `pctUsed`/`status` from fund-aware `outflow`/`inflow`, plus a conditional `fundMeta` row |
+| `src/main.js` | Modified | `openFundFormFor()`, `openFundMovementFormFor()`; `#addFundBtn` click; `#fundsList` delegated click (`.edit-fund`/`.fund-deposit`/`.fund-withdraw`); `#fundForm` submit (create/rename branch); `#deleteFundBtn` click (confirm + archive); `#fundMovementForm` submit (`addFundMovement()` wrapped in `withBusy()`); imported `formatCurrency` from `./utils.js` |
+| `src/style.css` | Modified | `.funds-section`, `.funds-list`, `.fund-card`, `.fund-header`, `.fund-name`, `.fund-balance`, `.fund-meta`, `.fund-actions` |
+| `tests/contract/isolation.test.js` | Modified | Added `describe('Fund movement totals isolation (task 6.2)', ...)` — 2 tests |
+| `tests/contract/funds.test.js` | Modified | Added `describe('Fund movement materializes the month (task 6.3)', ...)` — 1 test |
+| `openspec/changes/savings-investment-funds/tasks.md` | Modified | Marked tasks 5.1–5.10, 6.1–6.6, 7.1–7.5 complete (55/55 tasks across the whole change now `[x]`) |
+| `openspec/changes/savings-investment-funds/apply-progress.md` | Modified | Appended this Phase 5+6+7 record |
+
+### Deviations from Design
+
+None in Phase 5 — `index.html`, `src/render.js`, and `src/main.js` all transcribe design.md's exact code blocks (`renderFunds()`, the revised `renderSummary()` destructure/formula, the `#fundsList` delegated listener, the `#fundMovementForm` submit handler) with one cosmetic improvement: design.md's own `openFundMovementFormFor()` sketch does not show how `#movementBalanceHint` formats currency; this PR uses the existing `formatCurrency()` utility from `src/utils.js` (already imported by `render.js` for the identical purpose) instead of a duplicated inline `Intl.NumberFormat` call, consistent with "don't duplicate the currency-formatting logic" being an unstated but obvious extension of this codebase's existing DRY convention (`formatCurrency` already exists specifically to avoid this duplication).
+
+Phase 6: task 6.1's literal instruction ("modify `tests/contract/isolation.test.js`") was reconciled against the actual state of the test suite — the exact fund-isolation matrix it describes already exists, fully, in `tests/contract/funds.test.js` (landed in PR2). Rather than duplicate three already-passing assertions into a second file for the sake of literal task-text compliance, this PR followed the apply instructions' own explicit override ("only add what's genuinely missing per tasks.md 6.1–6.6's exact wording") and added only the two genuinely new assertions task 6.2 requires. This mirrors the precedent PR2/PR3/PR4 all established: literal task/spec prose yields to design.md and to the actual repository state when they diverge, and the divergence is documented rather than silently resolved.
+
+### Issues Found
+
+None blocking. The `Acquire connection error: Connection terminated unexpectedly` log line (same documented ephemeral-Postgres-pool noise as every prior PR in this change) appeared once during the full-suite run in this PR; the reported pass count (158/158) was unaffected, consistent with every prior PR's identical observation.
+
+### Remaining Tasks
+
+None. This was the final PR (5 of 5) in the stacked chain. All 7 phases, 55/55 tasks, are complete.
+
+### Workload / PR Boundary
+
+- Mode: stacked PR slice (PR 5 of 5, `stacked-to-main`) — final PR in the chain
+- Current work unit: Unit 5 — "Client UI rendering + event handlers + full integration" (per tasks.md's Suggested Work Units table), extended in this PR to also close out Unit 6/7's genuinely-missing items since Phase 5 alone landed comfortably under budget
+- Boundary: starts from PR4's landed fund-aware client cache/state (zero UI rendering or wiring); ends with the full funds UI surface (section, two overlays, rendering, event wiring, styling) plus the two genuinely-missing Phase 6 contract tests and Phase 7's full-suite/build verification — the entire `savings-investment-funds` change is now feature-complete end to end
+- Estimated review budget impact: `git diff --stat` for this PR's 7 changed files (excluding `apply-progress.md` itself): **327 insertions, 22 deletions = 349 authored changed lines** — under the 400-line budget for this slice, consistent with the Suggested Work Units table's estimate for Unit 5; no `size:exception` needed
+
+### Status
+
+21/21 tasks complete for this PR: Phase 5 (10) + Phase 6 (6) + Phase 7 (5). Combined with Phase 1 (6) + Phase 2 (9) + Phase 3 (9) + Phase 4 (10): **55/55 tasks complete across the entire `savings-investment-funds` change (PR 1 + PR 2 + PR 3 + PR 4 + PR 5).** Ready for verify. Ready for verify.

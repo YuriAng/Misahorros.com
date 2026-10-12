@@ -14,11 +14,11 @@ import {
   setIncome, addCategory, updateCategory, archiveCategory,
   addTransaction, updateTransaction, deleteTransaction, getCategoryBudget,
   getActiveProfile, addProfile, renameProfile, archiveProfile, setActiveProfile,
-  applyCarryForward
+  applyCarryForward, getFundBalance, addFund, renameFund, archiveFund, addFundMovement
 } from './state.js';
 import { ApiError, getImportStatus, importLegacy } from './api.js';
 import { loadData, STORAGE_KEY } from './storage.js';
-import { shiftMonthKey } from './utils.js';
+import { shiftMonthKey, formatCurrency } from './utils.js';
 
 // Cierra cualquier overlay que haya quedado abierto antes de abrir uno nuevo,
 // para que nunca puedan quedar dos formularios visibles a la vez.
@@ -194,6 +194,97 @@ document.getElementById('incomeForm').addEventListener('submit', withBusy(
     e.preventDefault();
     await setIncome(getActiveMonth(), document.getElementById('incomeAmount').value);
     closeOverlay('incomeFormOverlay');
+  }
+));
+
+// --- Fondos de ahorro/inversión: crear / editar / archivar / depositar / retirar ---
+
+function openFundFormFor(fund) {
+  document.getElementById('fundForm').reset();
+  if (fund) {
+    document.getElementById('fundFormTitle').textContent = 'Editar fondo';
+    document.getElementById('fundId').value = fund.id;
+    document.getElementById('fundName').value = fund.name;
+    document.getElementById('deleteFundBtn').hidden = false;
+  } else {
+    document.getElementById('fundFormTitle').textContent = 'Nuevo fondo';
+    document.getElementById('fundId').value = '';
+    document.getElementById('deleteFundBtn').hidden = true;
+  }
+  openOverlay('fundFormOverlay');
+}
+
+document.getElementById('addFundBtn').addEventListener('click', () => {
+  openFundFormFor(null);
+});
+
+document.getElementById('fundsList').addEventListener('click', (e) => {
+  const editBtn = e.target.closest('.edit-fund');
+  if (editBtn) {
+    const fund = getData().funds.find(f => f.id === editBtn.dataset.id);
+    if (!fund) return;
+    openFundFormFor(fund);
+    return;
+  }
+  const moveBtn = e.target.closest('.fund-deposit, .fund-withdraw');
+  if (!moveBtn) return;
+  openFundMovementFormFor(moveBtn.dataset.id, moveBtn.classList.contains('fund-deposit') ? 'deposit' : 'withdrawal');
+});
+
+document.getElementById('fundForm').addEventListener('submit', withBusy(
+  submitButtonOf('fundForm'),
+  async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('fundId').value;
+    const name = document.getElementById('fundName').value;
+    if (id) {
+      await renameFund(id, name);
+    } else {
+      await addFund(name);
+    }
+    closeOverlay('fundFormOverlay');
+  }
+));
+
+document.getElementById('deleteFundBtn').addEventListener('click', () => {
+  const id = document.getElementById('fundId').value;
+  if (!id) return;
+  const ok = confirm('¿Archivar este fondo? Debes retirar el saldo completo antes de archivarlo.');
+  if (!ok) return;
+  withBusy(
+    () => document.getElementById('deleteFundBtn'),
+    async () => {
+      await archiveFund(id);
+      closeOverlay('fundFormOverlay');
+    }
+  )();
+});
+
+function openFundMovementFormFor(fundId, type) {
+  document.getElementById('fundMovementForm').reset();
+  document.getElementById('fundMovementFormTitle').textContent =
+    type === 'deposit' ? 'Depositar en el fondo' : 'Retirar del fondo';
+  document.getElementById('movementFundId').value = fundId;
+  document.getElementById('movementType').value = type;
+  document.getElementById('movementDate').value = toDateInputValue();
+  const currency = getData().settings.currency;
+  document.getElementById('movementBalanceHint').textContent =
+    `Saldo actual: ${formatCurrency(getFundBalance(fundId), currency)}`;
+  openOverlay('fundMovementFormOverlay');
+}
+
+document.getElementById('fundMovementForm').addEventListener('submit', withBusy(
+  submitButtonOf('fundMovementForm'),
+  async (e) => {
+    e.preventDefault();
+    const fundId = document.getElementById('movementFundId').value;
+    await addFundMovement(fundId, {
+      type: document.getElementById('movementType').value,
+      amount: document.getElementById('movementAmount').value,
+      note: document.getElementById('movementNote').value,
+      date: document.getElementById('movementDate').value
+    });
+    closeOverlay('fundMovementFormOverlay');
   }
 ));
 

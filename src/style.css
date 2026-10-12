@@ -162,6 +162,53 @@ main {
   margin: 0 0 10px;
 }
 
+.funds-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.funds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fund-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(20, 30, 60, 0.06);
+}
+
+.fund-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fund-name { flex: 1; font-weight: 600; }
+
+.fund-balance {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--color-ok);
+}
+
+.fund-meta {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin-top: 6px;
+}
+
+.fund-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .categories-list {
   display: flex;
   flex-direction: column;
