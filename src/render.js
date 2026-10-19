@@ -115,6 +115,28 @@ function renderFunds() {
       ? `<span>Este mes: +${formatCurrency(inThis, currency)} / −${formatCurrency(outThis, currency)}</span>`
       : `<span>Sin movimientos este mes</span>`;
 
+    const movementsList = movements.length === 0
+      ? ''
+      : `
+        <div class="fund-movements-list">
+          ${movements.map(m => {
+            const dateLabel = new Date(m.date).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' });
+            const isDeposit = m.type === 'deposit';
+            return `
+              <div class="fund-movement-row">
+                <span class="fund-movement-icon">${isDeposit ? '⬆' : '⬇'}</span>
+                <div class="fund-movement-info">
+                  <span class="fund-movement-type">${isDeposit ? 'Depósito' : 'Retiro'}</span>
+                  ${m.note ? `<span class="fund-movement-note">${m.note}</span>` : ''}
+                </div>
+                <span class="fund-movement-date">${dateLabel}</span>
+                <span class="fund-movement-amount ${isDeposit ? 'deposit' : 'withdrawal'}">${isDeposit ? '+' : '-'}${formatCurrency(m.amount, currency)}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+
     return `
       <div class="fund-card" data-id="${fund.id}">
         <div class="fund-header">
@@ -127,6 +149,7 @@ function renderFunds() {
           <button class="btn-link fund-deposit" data-id="${fund.id}">Depositar</button>
           <button class="btn-link fund-withdraw" data-id="${fund.id}" ${fund.balance <= 0 ? 'disabled' : ''}>Retirar</button>
         </div>
+        ${movementsList}
       </div>
     `;
   }).join('');

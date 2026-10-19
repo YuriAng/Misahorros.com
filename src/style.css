@@ -209,6 +209,49 @@ main {
   margin-top: 8px;
 }
 
+.fund-movements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.fund-movement-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  font-size: 0.8rem;
+}
+
+.fund-movement-icon { font-size: 1rem; }
+
+.fund-movement-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fund-movement-type { font-weight: 600; }
+.fund-movement-note {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fund-movement-date { color: var(--color-text-muted); font-size: 0.72rem; }
+
+.fund-movement-amount { font-weight: 700; }
+.fund-movement-amount.deposit { color: var(--color-ok); }
+.fund-movement-amount.withdrawal { color: var(--color-danger); }
+
 .categories-list {
   display: flex;
   flex-direction: column;
