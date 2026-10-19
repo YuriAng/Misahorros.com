@@ -8,7 +8,7 @@
 // la petición falla.
 
 import './style.css';
-import { renderApp } from './render.js';
+import { renderApp, renderTransactions } from './render.js';
 import {
   bootstrap, getData, getActiveMonth, setActiveMonth,
   setIncome, addCategory, updateCategory, archiveCategory,
@@ -400,6 +400,10 @@ document.getElementById('expenseForm').addEventListener('submit', withBusy(
     closeOverlay('expenseFormOverlay');
   }
 ));
+
+document.getElementById('transactionsCategoryFilter').addEventListener('change', () => {
+  renderTransactions();
+});
 
 document.getElementById('transactionsList').addEventListener('click', (e) => {
   const editBtn = e.target.closest('.edit-transaction');

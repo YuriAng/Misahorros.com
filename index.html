@@ -43,7 +43,12 @@
       </section>
 
       <section class="transactions-section">
-        <h2>Gastos recientes</h2>
+        <div class="section-header">
+          <h2>Gastos recientes</h2>
+          <select id="transactionsCategoryFilter" aria-label="Filtrar por categoría">
+            <option value="">Todas</option>
+          </select>
+        </div>
         <div id="transactionsList" class="transactions-list"></div>
       </section>
     </main>

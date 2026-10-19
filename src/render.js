@@ -13,6 +13,7 @@ export function renderApp() {
   renderSummary();
   renderFunds();
   renderCategories();
+  renderTransactionsCategoryFilterOptions();
   renderTransactions();
   renderCategorySelectOptions();
 }
@@ -192,19 +193,37 @@ function renderCategories() {
   }).join('');
 }
 
-function renderTransactions() {
+// Rellena el selector de categorías para filtrar "Gastos recientes",
+// preservando la selección actual (si sigue existiendo) para que no se
+// resetee a "Todas" en cada renderApp().
+function renderTransactionsCategoryFilterOptions() {
+  const select = document.getElementById('transactionsCategoryFilter');
+  const previousValue = select.value;
+  const categories = getActiveCategories();
+  select.innerHTML = `<option value="">Todas</option>` +
+    categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+  select.value = previousValue;
+}
+
+export function renderTransactions() {
   const monthKey = getActiveMonth();
   const data = getData();
   const month = data.months[monthKey];
   const currency = data.settings.currency;
   const list = document.getElementById('transactionsList');
+  const filterCategoryId = document.getElementById('transactionsCategoryFilter').value;
 
-  if (!month || month.transactions.length === 0) {
-    list.innerHTML = `<p class="empty-state">Sin gastos registrados este mes.</p>`;
+  const allTransactions = month ? month.transactions : [];
+  const transactions = filterCategoryId
+    ? allTransactions.filter(t => t.categoryId === filterCategoryId)
+    : allTransactions;
+
+  if (transactions.length === 0) {
+    list.innerHTML = `<p class="empty-state">${filterCategoryId ? 'Sin gastos en esta categoría este mes.' : 'Sin gastos registrados este mes.'}</p>`;
     return;
   }
 
-  list.innerHTML = month.transactions.map(t => {
+  list.innerHTML = transactions.map(t => {
     const cat = data.categories.find(c => c.id === t.categoryId);
     const dateLabel = new Date(t.date).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' });
     return `
