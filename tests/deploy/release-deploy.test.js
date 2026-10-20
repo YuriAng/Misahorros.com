@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -15,7 +15,7 @@ function host() {
   const installed = run('bash', ['deploy/install-host.sh'], env);
   expect(installed.status, installed.stderr).toBe(0);
   writeFileSync(resolve(root, 'shared/production.env'), 'POSTGRES_DB=budget\nPOSTGRES_USER=postgres\n');
-  writeFileSync(resolve(bin, 'docker'), '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$MISA_LOG"\ncase "$*" in *"pg_dump"*) printf dump;; *"psql"*) printf "%s" "${MISA_TABLES:-}";; *"ps --status running"*) printf healthy;; esac\n');
+  writeFileSync(resolve(bin, 'docker'), '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$MISA_LOG"\ncase "$*" in *"pg_dump"*) printf dump;; *"row_total"*) case "$*" in *" -f "*) [[ "${MISA_ROWS_PRE_FAIL:-}" != 1 ]] || exit 1; printf "%s" "${MISA_ROWS_PRE:-0}";; *"--env-file"*) printf "%s" "${MISA_ROWS_POST:-0}";; esac;; *"psql"*) printf "%s" "${MISA_TABLES:-}";; *"ps --status running"*) printf healthy;; esac\n');
   writeFileSync(resolve(bin, 'pg_restore'), '#!/usr/bin/env bash\nexit 0\n');
   writeFileSync(resolve(bin, 'curl'), '#!/usr/bin/env bash\n[[ "${MISA_FAIL_HEALTH:-}" != 1 ]] || exit 22\nprintf "{\\"status\\":\\"ok\\"}"\n');
   writeFileSync(resolve(bin, 'flock'), '#!/usr/bin/env bash\nexit 0\n');
@@ -141,5 +141,33 @@ describe('release deployment host boundary', () => {
     expect(commands.indexOf('down')).toBeLessThan(commands.lastIndexOf(' up -d'));
     expect(commands).not.toContain('pg_restore');
     expect(JSON.parse(readFileSync(resolve(root, 'state/deployments/v1.2.4.json')))).toMatchObject({ status: 'rolled_back', previousTag: resolve(root, 'releases/v1.2.2') });
+  });
+
+  it('rolls back when a populated database is empty after the release', () => {
+    const { root, bin, env } = host();
+    const prior = priorRelease(root);
+    const { archive, manifest } = bundle(root, 'v1.2.5');
+    const result = run(resolve(bin, 'misahorros-deploy'), ['deploy', 'v1.2.5', archive, manifest], { ...env, MISA_ROWS_PRE: '5', MISA_ROWS_POST: '0' });
+    expect(result.status).not.toBe(0);
+    expect(JSON.parse(readFileSync(resolve(root, 'state/deployments/v1.2.5.json')))).toMatchObject({ status: 'rolled_back', previousTag: prior });
+    expect(readlinkSync(resolve(root, 'current'))).toBe(prior);
+  });
+
+  it('promotes the release when the row count survives the migration', () => {
+    const { root, bin, env } = host();
+    priorRelease(root);
+    const { archive, manifest } = bundle(root, 'v1.2.6');
+    const result = run(resolve(bin, 'misahorros-deploy'), ['deploy', 'v1.2.6', archive, manifest], { ...env, MISA_ROWS_PRE: '5', MISA_ROWS_POST: '5' });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(resolve(root, 'state/deployments/v1.2.6.json')))).toMatchObject({ status: 'succeeded' });
+  });
+
+  it('aborts before stopping the prior stack when the pre-deploy row count is unreadable', () => {
+    const { root, bin, env } = host();
+    priorRelease(root);
+    const { archive, manifest } = bundle(root, 'v1.2.7');
+    const result = run(resolve(bin, 'misahorros-deploy'), ['deploy', 'v1.2.7', archive, manifest], { ...env, MISA_ROWS_PRE_FAIL: '1' });
+    expect(result.status).toBe(70);
+    expect(readFileSync(env.MISA_LOG, 'utf8')).not.toContain(' down');
   });
 });

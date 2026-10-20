@@ -33,6 +33,13 @@ failed release automatically selects the previous application release; it never
 restores PostgreSQL. Escalate migration or data recovery to the maintainer; no
 database recovery command is provided by this deployment.
 
+Data guard: before stopping the running stack, the launcher counts total rows in
+public non-`knex_%` tables and aborts with exit 70 if the count is unreadable.
+After migrations, `release-deploy.sh` recounts; if the previous count was above
+zero and the new one is zero (or unreadable), the release fails and the existing
+application rollback runs. The guard only detects a total wipe, not partial loss,
+and has no bypass flag. The first release (no previous stack) skips it.
+
 Backups are verified custom `pg_dump` files retained for the seven latest
 successful deployments. Credential rotation: rotate GitHub and Tailscale
 credentials before the first release.
